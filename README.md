@@ -64,12 +64,13 @@ way a keyboard shortcut does.
 
 ### Option A: Windows installer
 
-Download the latest `Clembot-dictate-Setup-<version>.exe` from
-[Releases](https://github.com/clemenswan/clembot-dictate/releases).
+Download `Clembot-dictate-Setup-1.1.0.exe` from
+[the latest release](https://github.com/clemenswan/clembot-dictate/releases/latest).
+73.6 MiB.
 
-> **No binary is published yet.** The 1.1.0 installer is built and in use, but it has not
-> been attached to a release here. Until it is, [Option B](#option-b-from-source) is the
-> way in. Watch the repo if you would rather wait for the installer.
+```
+SHA256  783547bd73339632c2b9e19c7c909f0cb278fd047a52f8b15b93e52f7c8f8421
+```
 
 1. Run it. It installs to `%LOCALAPPDATA%\Programs\Clembot-dictate`, no admin rights.
 2. Windows shows **"Windows protected your PC"** because the binary is unsigned. Click
@@ -81,6 +82,9 @@ The speech model (about 75 MB) downloads on first launch and is cached in
 
 > **On the SmartScreen warning.** Code signing certificates cost money this project does
 > not spend yet. If that is a dealbreaker, run from source instead: it is the same code.
+> Antivirus products also flag freshly built PyInstaller bundles fairly often, because the
+> packaging pattern resembles what packers do. Nothing here is obfuscated and the whole
+> source is in this repository.
 
 ### Option B: From source
 
