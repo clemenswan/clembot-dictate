@@ -1,0 +1,15 @@
+sounddevice
+faster-whisper
+keyboard
+pyperclip
+pyautogui
+soundfile
+numpy
+pystray
+Pillow
+customtkinter
+anthropic
+ollama
+pywin32
+psutil
+keyring
