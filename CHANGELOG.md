@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.1.1
+
+An interface pass.
+
+**The window lost its title bar.** A 44px strip was carrying 32px of chrome whose
+minimise and maximise buttons meant nothing for a tray tool. It is frameless now, drag
+it by the bar, and it stays on top since it no longer has a taskbar entry.
+
+**A palette of its own.** The interface was painted in Catppuccin Mocha, a third-party
+developer theme, in sixteen hardcoded colours. It now derives a warm dark palette with a
+forest green accent from the Wanessa Labs system, in one file. Every text colour was
+measured against its background; the lowest ratio in the app is 5.1:1.
+
+**Icons instead of emoji.** The header was built from `●`, `▼`, `⚙`, `⟳`, `📋` and `✕`,
+which take the system emoji font's colour rather than the app's and cannot be sized to a
+grid. They are drawn now, at one stroke weight.
+
+**History cards fit their contents.** Every entry was padded to three lines regardless of
+length, so a full panel showed one and a half of them. A card built before the panel was
+open had no width yet, so a one-line transcript measured as three and stayed that way.
+Fixed, and two entries now fit where one and a half did.
+
+**Type has a scale**: four sizes, one family, state words set as spaced uppercase labels.
+Previously four sizes at three weights with nothing behind the choice.
+
+The tray icon is on the palette too, green when idle rather than slate.
+
 ## 1.1.0
 
 **Voice commands (optional).** Hold Ctrl with the hotkey and the utterance becomes a

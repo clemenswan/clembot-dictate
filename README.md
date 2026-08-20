@@ -64,12 +64,12 @@ way a keyboard shortcut does.
 
 ### Option A: Windows installer
 
-Download `Clembot-dictate-Setup-1.1.0.exe` from
+Download `Clembot-dictate-Setup-1.1.1.exe` from
 [the latest release](https://github.com/clemenswan/clembot-dictate/releases/latest).
 73.6 MiB.
 
 ```
-SHA256  783547bd73339632c2b9e19c7c909f0cb278fd047a52f8b15b93e52f7c8f8421
+SHA256  5a70a7c1b147f6b44be29221ddbac61b775a33b6520f0a4aca39da8dcbf137a9
 ```
 
 1. Run it. It installs to `%LOCALAPPDATA%\Programs\Clembot-dictate`, no admin rights.
@@ -118,9 +118,10 @@ Full developer setup, including every configuration knob: [docs/setup.md](docs/s
 | Settings → **Hotkey** | Rebind the key. Takes effect immediately, no restart |
 | Settings → **AI Key** | Store an Anthropic key in Windows Credential Manager |
 
-A 52 px header strip sits at the top of the screen showing state. The history panel slides
-out when you want it and stays out of the way when you do not. The tray icon turns red
-while recording.
+A 44 px strip sits at the top of the screen showing state. It has no title bar: drag it
+by the bar itself, and it stays above your other windows, since a frameless window has no
+taskbar entry to find it with. The history panel folds out when you want it. The tray icon
+is green while idle and red while recording.
 
 Taps shorter than 0.3 s are discarded, so brushing the key does not create an empty entry.
 
@@ -338,6 +339,22 @@ Longer version, with log locations and how to read them:
   own is one version check at startup, which you can switch off.
 
 ---
+
+## Design
+
+The interface has one source for every colour, size and font (`src/theme.py`), derived
+from the [Wanessa Labs](https://wanessalabs.com) system and inverted for a dark tool.
+Contrast is measured rather than asserted: the lowest ratio in the app is 5.1:1.
+
+Two rules worth knowing if you send a patch:
+
+- **No hex outside `theme.py`.** The palette stops being one thing the moment it has two
+  sources.
+- **No emoji in the UI.** Icons are drawn from lines and arcs in `src/icons.py`. Emoji
+  render differently on every machine, ignore the app's colour, and cannot sit on a grid.
+
+`python tools/ui_preview.py --state all` renders the real window with fake data and
+writes screenshots, so an interface change can be looked at rather than only read.
 
 ## Project layout
 

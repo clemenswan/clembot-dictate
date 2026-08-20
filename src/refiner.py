@@ -18,6 +18,8 @@ from config import (
     REFINE_BACKEND,
     OLLAMA_MODEL,
     OLLAMA_HOST,
+    OLLAMA_TIMEOUT,
+    OLLAMA_KEEP_ALIVE,
     ANTHROPIC_MODEL,
     CONTEXT_FILE,
     CONTEXT_MODES,
@@ -84,7 +86,7 @@ class Refiner:
     def _setup_ollama(self):
         try:
             import ollama
-            client = ollama.Client(host=OLLAMA_HOST)
+            client = ollama.Client(host=OLLAMA_HOST, timeout=OLLAMA_TIMEOUT)
             models = [m.model for m in client.list().models]
             matched = next((m for m in models if m.startswith(OLLAMA_MODEL.split(":")[0])), None)
             if not matched:
@@ -103,6 +105,7 @@ class Refiner:
                         {"role": "system", "content": self._build_system_prompt(mode)},
                         {"role": "user",   "content": text},
                     ],
+                    keep_alive=OLLAMA_KEEP_ALIVE,
                 )
                 return response.message.content.strip()
 

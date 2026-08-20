@@ -1,24 +1,44 @@
-"""
-Clembot-dictate — UI
-Single-row header strip. History panel toggles open/closed.
+"""Clembot-dictate UI: one 44px strip, with a history panel that folds out of it.
 
-Compact (history hidden):
-  ┌────────────────────────────────────────────────────────┐
-  │  ● Ready    AI ●━━  [Claude Code ▼]    [▼ History]    │
-  └────────────────────────────────────────────────────────┘
+Frameless on purpose. A 44px tool wearing a 32px title bar with minimise, maximise
+and close reads as a dialog somebody shrank, and none of those three buttons mean
+anything for a strip that lives in the tray. The cost is that dragging and closing
+are drawn here rather than provided: see `_make_draggable` and the grip.
 
-Expanded (history shown):
-  ┌────────────────────────────────────────────────────────┐
-  │  ● Ready    AI ●━━  [Claude Code ▼]    [▲ History]    │
-  ├────────────────────────────────────────────────────────┤
-  │  14:23            [✦ Run AI]  [Copy]                   │
-  │  ┌ RAW ──────────────────────────────────────────────┐ │
-  │  │ um so basically...                    ▼ Show more │ │
-  │  └────────────────────────────────────────────────── ┘ │
-  │  ┌ ✦ AI ─────────────────────────────────────────── ┐  │
-  │  │ Fix the bug in auth.                  ▼ Show more│  │
-  │  └────────────────────────────────────────────────── ┘  │
-  └────────────────────────────────────────────────────────┘
+Compact:
+  +--------------------------------------------------------------+
+  |  = *  R E A D Y      A I [==]  ( Claude Code v )  H I S T O R Y  v  =  x  |
+  +--------------------------------------------------------------+
+
+Expanded:
+  +--------------------------------------------------------------+
+  |  = *  R E A D Y      A I [==]  ( Claude Code v )  H I S T O R Y  ^  =  x  |
+  +--------------------------------------------------------------+
+  |  H I S T O R Y                                               |
+  |  +--------------------------------------------------------+  |
+  |  |  14:23                        [ RE-RUN ]  [ COPY ]     |  |
+  |  |  +--------------------------------------------------+  |  |
+  |  |  |  R A W                                           |  |  |
+  |  |  |  um so basically fix the the auth bug            |  |  |
+  |  |  +--------------------------------------------------+  |  |
+  |  |  +--------------------------------------------------+  |  |
+  |  |  |  A I                                             |  |  |
+  |  |  |  Fix the authentication bug.                     |  |  |
+  |  |  +--------------------------------------------------+  |  |
+  |  +--------------------------------------------------------+  |
+  +--------------------------------------------------------------+
+
+Three rules this file follows, all of which it used to break:
+
+1. **No colour, size or font is written here.** They come from `theme.py`, which
+   derives them from the Wanessa Labs brand system. The old file held 16 hardcoded
+   Catppuccin hexes and picked from 9, 10, 12 and 13px at three weights.
+2. **No emoji as UI.** Icons are drawn in `icons.py` from lines and arcs. Emoji as
+   an icon system is a vault slop tell, renders differently on every machine, and
+   cannot take our colour or sit on our grid.
+3. **Every text block fits its content.** Blocks measure themselves on `<Configure>`
+   rather than once on a timer, because a card built before the panel is packed has
+   no width yet and a one-line transcript counts as three.
 
 All public methods are thread-safe via root.after().
 """
@@ -35,6 +55,8 @@ import webbrowser
 
 from PIL import Image, ImageDraw, ImageTk
 
+import theme
+import icons
 from history import History, Entry
 from config import CONTEXT_MODES, DEFAULT_CONTEXT_MODE, HOTKEY, AUTO_CONTEXT, VERSION
 import startup
@@ -43,24 +65,27 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 # Catppuccin Mocha
-CLR_BG        = "#1e1e2e"
-CLR_SURFACE   = "#2a2a3e"
-CLR_SURFACE1  = "#313244"
-CLR_SURFACE2  = "#45475a"
-CLR_TEXT      = "#cdd6f4"
-CLR_SUBTEXT   = "#6c7086"
-CLR_IDLE      = "#585b70"
-CLR_RECORDING = "#f38ba8"
-CLR_RAW_LABEL = "#a6adc8"
-CLR_RAW_TEXT  = "#7f849c"
-CLR_AI_LABEL  = "#89dceb"
-CLR_AI_TEXT   = "#cdd6f4"
-CLR_RUN_BTN   = "#1e3a4a"
-CLR_RUN_HOVER = "#2a4f64"
-CLR_RUN_TEXT  = "#89dceb"
+# Colours, sizes and type all come from theme.py, which derives them from the
+# Wanessa Labs brand system. Nothing in this file may hardcode a colour.
+CLR_BG        = theme.BG
+CLR_SURFACE   = theme.SURFACE
+CLR_SURFACE1  = theme.SURFACE_RAISED
+CLR_SURFACE2  = theme.HOVER
+CLR_TEXT      = theme.TEXT_PRIMARY
+CLR_SUBTEXT   = theme.TEXT_MUTED
+CLR_IDLE      = theme.TEXT_MUTED
+CLR_RECORDING = theme.RECORDING
+CLR_RAW_LABEL = theme.TEXT_MUTED
+CLR_RAW_TEXT  = theme.TEXT_SECONDARY
+CLR_AI_LABEL  = theme.ACCENT
+CLR_AI_TEXT   = theme.TEXT_PRIMARY
+CLR_RUN_BTN   = theme.ACCENT_DIM
+CLR_RUN_HOVER = theme.ACCENT_DIM_HOVER
+CLR_RUN_TEXT  = theme.ACCENT
+CLR_BORDER    = theme.BORDER
 
-WINDOW_W   = 500
-COMPACT_H  = 52    # header only
+WINDOW_W   = 520
+COMPACT_H  = 44    # header only. Was 52 plus a ~32px title bar we no longer draw.
 BANNER_H   = 30    # update notification banner
 HISTORY_H  = 520   # header + history panel
 MAX_LINES  = 3
@@ -84,6 +109,78 @@ class _CardRefs:
         self.copy_btn.configure(command=lambda: pyperclip.copy(text))
 
 
+class ModeSelect(ctk.CTkFrame):
+    """A dropdown that borrows nothing from the stock widget except behaviour.
+
+    Keeps `get`/`set` so the rest of the app does not care that it changed, and
+    posts a plain `tk.Menu` styled from the same tokens as everything else.
+    """
+
+    def __init__(self, master, values, initial, command, width=132):
+        super().__init__(master, fg_color=CLR_SURFACE1, corner_radius=theme.RADIUS_MD,
+                         height=theme.CONTROL_H, width=width)
+        self.pack_propagate(False)
+        self._values = list(values)
+        self._value = initial
+        self._command = command
+
+        self._label = ctk.CTkLabel(
+            self, text=initial, text_color=CLR_TEXT, anchor="w",
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_SMALL),
+        )
+        self._label.pack(side="left", padx=(theme.SP_3, 0))
+
+        self._chevron = icons.Chevron(self, bg=CLR_SURFACE1, color=CLR_SUBTEXT, size=12)
+        self._chevron.pack(side="right", padx=(0, theme.SP_3))
+
+        self._menu = tk.Menu(
+            self, tearoff=0,
+            bg=CLR_SURFACE1, fg=CLR_TEXT,
+            activebackground=CLR_SURFACE2, activeforeground=CLR_TEXT,
+            bd=0, relief="flat", activeborderwidth=0,
+            font=(theme.body(), theme.SIZE_SMALL),
+        )
+        for value in self._values:
+            self._menu.add_command(label=value, command=lambda v=value: self._choose(v))
+
+        for widget in (self, self._label, self._chevron):
+            widget.bind("<Button-1>", self._open)
+            widget.bind("<Enter>", self._enter)
+            widget.bind("<Leave>", self._leave)
+            widget.configure(cursor="hand2")
+
+    # -- behaviour ----------------------------------------------------------
+    def _open(self, _event=None):
+        self._chevron.set_up(True)
+        try:
+            self._menu.post(self.winfo_rootx(),
+                            self.winfo_rooty() + self.winfo_height() + theme.SP_1)
+        finally:
+            self.after(120, lambda: self._chevron.set_up(False))
+
+    def _choose(self, value):
+        self.set(value)
+        if self._command:
+            self._command(value)
+
+    def _enter(self, _event=None):
+        self.configure(fg_color=CLR_SURFACE2)
+        self._chevron.set_bg(CLR_SURFACE2)
+
+    def _leave(self, _event=None):
+        self.configure(fg_color=CLR_SURFACE1)
+        self._chevron.set_bg(CLR_SURFACE1)
+
+    # -- the CTkOptionMenu surface the app already calls ---------------------
+    def get(self) -> str:
+        return self._value
+
+    def set(self, value: str):
+        if value in self._values:
+            self._value = value
+            self._label.configure(text=value)
+
+
 class HistoryWindow:
     def __init__(self, history: History, on_run_ai: Callable | None = None, on_rebind: Callable | None = None):
         self._history      = history
@@ -97,12 +194,26 @@ class HistoryWindow:
 
         self._root = ctk.CTk()
         self._root.title("Clembot-dictate")
-        self._root.geometry(f"{WINDOW_W}x{COMPACT_H}")
-        self._root.configure(fg_color=CLR_BG)
+        self._root.configure(fg_color=CLR_BORDER)
         self._root.resizable(False, False)
         self._root.withdraw()
         self._root.protocol("WM_DELETE_WINDOW", self._root.withdraw)
         self._set_window_icon()
+
+        # Frameless. A 44px tool wearing a 32px title bar with minimise, maximise
+        # and close reads as a dialog somebody shrank, and neither maximise nor the
+        # taskbar entry mean anything for a strip that lives in the tray. The cost
+        # is that dragging, placement and closing are now ours to draw: see
+        # _build_header's grip and _start_drag below.
+        self._root.overrideredirect(True)
+        self._root.attributes("-topmost", True)
+        self._place_initial()
+
+        # The root's own colour is the border. Everything else sits on this inset
+        # frame, so the window carries a 1px edge against whatever is behind it.
+        # Elevation is borders, never shadow, per the brand file.
+        self._shell = ctk.CTkFrame(self._root, fg_color=CLR_BG, corner_radius=0)
+        self._shell.pack(fill="both", expand=True, padx=1, pady=1)
 
         self._build_header()
         self._build_update_banner()
@@ -141,107 +252,174 @@ class HistoryWindow:
         except Exception:
             pass
 
+    # ------------------------------------------------------------------
+    # Frameless window plumbing
+    # ------------------------------------------------------------------
+
+    def _place_initial(self):
+        """Top centre of the primary screen, a hair below the edge.
+
+        A frameless window opens wherever Tk feels like otherwise, and "wherever"
+        for a strip usually means on top of the thing you were reading.
+        """
+        try:
+            screen_w = self._root.winfo_screenwidth()
+            x = max(0, (screen_w - WINDOW_W) // 2)
+            self._root.geometry(f"{WINDOW_W}x{COMPACT_H}+{x}+8")
+        except Exception:
+            self._root.geometry(f"{WINDOW_W}x{COMPACT_H}")
+
+    def _resize(self, height: int):
+        """Change height without teleporting the window back to the origin."""
+        try:
+            x, y = self._root.winfo_x(), self._root.winfo_y()
+            self._root.geometry(f"{WINDOW_W}x{height}+{x}+{y}")
+        except Exception:
+            self._root.geometry(f"{WINDOW_W}x{height}")
+
+    def _make_draggable(self, *widgets):
+        for widget in widgets:
+            widget.bind("<Button-1>", self._start_drag, add="+")
+            widget.bind("<B1-Motion>", self._on_drag, add="+")
+
+    def _start_drag(self, event):
+        self._drag_from = (event.x_root - self._root.winfo_x(),
+                           event.y_root - self._root.winfo_y())
+
+    def _on_drag(self, event):
+        origin = getattr(self, "_drag_from", None)
+        if not origin:
+            return
+        self._root.geometry(f"+{event.x_root - origin[0]}+{event.y_root - origin[1]}")
+
+    # ------------------------------------------------------------------
+    # Header
+    # ------------------------------------------------------------------
+
+    def _label(self, master, text, size=None, color=None, tracked=False,
+               weight="normal", **kwargs):
+        """The one place a font is chosen, so the scale cannot drift again.
+
+        The old header mixed 9, 10 and 12px across seven widgets with three
+        weights between them, which is most of why it read as assembled rather
+        than laid out.
+        """
+        return ctk.CTkLabel(
+            master,
+            text=theme.track(text) if tracked else text,
+            text_color=color or CLR_SUBTEXT,
+            font=ctk.CTkFont(family=theme.body(), size=size or theme.SIZE_LABEL,
+                             weight=weight),
+            **kwargs,
+        )
+
+    def _chip(self, master, text, color=None, fill=None):
+        """A state chip: tracked micro-label on a quiet fill. Never an emoji."""
+        return ctk.CTkLabel(
+            master, text=theme.track(text),
+            text_color=color or CLR_SUBTEXT,
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
+            fg_color=fill or CLR_SURFACE1,
+            corner_radius=theme.RADIUS_SM,
+            height=theme.CHIP_H,
+        )
+
+    def _hover_tint(self, icon):
+        """Icons are flat until pointed at. Colour is the whole hover state: a
+        background swap behind a 12px canvas reads as a glitch."""
+        icon.configure(cursor="hand2")
+        icon.bind("<Enter>", lambda _: icon.set_color(CLR_TEXT), add="+")
+        icon.bind("<Leave>", lambda _: icon.set_color(CLR_SUBTEXT), add="+")
+
     def _build_header(self):
-        bar = ctk.CTkFrame(self._root, fg_color=CLR_SURFACE, corner_radius=0, height=COMPACT_H)
+        bar = ctk.CTkFrame(self._shell, fg_color=CLR_SURFACE, corner_radius=0,
+                           height=COMPACT_H)
         bar.pack(fill="x")
         bar.pack_propagate(False)
+        self._bar = bar
 
-        # ── Status indicator (left) ──────────────────────────────────
-        self._indicator = ctk.CTkLabel(
-            bar, text="● Ready",
-            text_color=CLR_IDLE,
-            font=ctk.CTkFont(size=12, weight="bold"),
-            width=90, anchor="w",
-        )
-        self._indicator.pack(side="left", padx=(12, 0))
+        # -- Left: grip, status light, state ------------------------------
+        left = ctk.CTkFrame(bar, fg_color="transparent")
+        left.pack(side="left", padx=(theme.SP_3, 0))
 
-        # ── Clipboard-only badge (hidden until tray toggle is on) ────
-        self._clip_badge = ctk.CTkLabel(
-            bar, text="📋 clip",
-            text_color=CLR_SUBTEXT,
-            font=ctk.CTkFont(size=9),
-            fg_color=CLR_SURFACE1,
-            corner_radius=4,
-            width=48, height=18,
-        )
-        # Starts hidden — packed by set_clipboard_only(True)
+        self._grip = icons.Grip(left, bg=CLR_SURFACE, color=CLR_BORDER, size=12)
+        self._grip.pack(side="left", padx=(0, theme.SP_2))
 
-        # ── History toggle (far right) ───────────────────────────────
-        self._hist_btn = ctk.CTkButton(
-            bar, text="▼ History",
-            width=84, height=26,
-            fg_color=CLR_SURFACE1, hover_color=CLR_SURFACE2,
-            text_color=CLR_SUBTEXT, font=ctk.CTkFont(size=10),
-            corner_radius=4,
-            command=self._toggle_history,
-        )
-        self._hist_btn.pack(side="right", padx=(0, 10))
+        self._dot = icons.Dot(left, bg=CLR_SURFACE, color=CLR_IDLE, size=10, radius=4)
+        self._dot.pack(side="left", padx=(0, theme.SP_2))
 
-        # ── Settings button ──────────────────────────────────────────
-        ctk.CTkButton(
-            bar, text="⚙",
-            width=28, height=26,
-            fg_color=CLR_SURFACE1, hover_color=CLR_SURFACE2,
-            text_color=CLR_SUBTEXT, font=ctk.CTkFont(size=12),
-            corner_radius=4,
-            command=self._open_settings,
-        ).pack(side="right", padx=(0, 4))
+        self._indicator = self._label(left, "Ready", tracked=True, anchor="w")
+        self._indicator.pack(side="left")
 
-        # ── Auto-context badge (shown briefly after auto-switch) ─────
-        self._auto_badge = ctk.CTkLabel(
-            bar, text="⟳ auto",
-            text_color=CLR_AI_LABEL,
-            font=ctk.CTkFont(size=9),
-            fg_color=CLR_RUN_BTN,
-            corner_radius=4,
-            width=48, height=18,
-        )
-        # Starts hidden — packed temporarily on auto-context switch
+        # With no title bar, dragging has to live somewhere. It lives on the bar
+        # and on everything inert sitting on it.
+        self._make_draggable(bar, left, self._grip, self._dot, self._indicator)
 
-        # ── Mode dropdown (right of center) ─────────────────────────
-        self._mode_menu = ctk.CTkOptionMenu(
+        # -- Left, conditional: state chips -------------------------------
+        self._clip_badge = self._chip(bar, "Clipboard")
+        self._auto_badge = self._chip(bar, "Auto", color=theme.ACCENT,
+                                      fill=theme.ACCENT_DIM)
+
+        # -- Right, outermost first ---------------------------------------
+        self._close_btn = icons.Close(bar, bg=CLR_SURFACE, color=CLR_SUBTEXT, size=14)
+        self._close_btn.pack(side="right", padx=(theme.SP_2, theme.SP_3))
+        self._hover_tint(self._close_btn)
+        self._close_btn.bind("<Button-1>", lambda _: self._root.withdraw())
+
+        self._menu_btn = icons.Menu(bar, bg=CLR_SURFACE, color=CLR_SUBTEXT, size=14)
+        self._menu_btn.pack(side="right", padx=(0, theme.SP_2))
+        self._hover_tint(self._menu_btn)
+        self._menu_btn.bind("<Button-1>", lambda _: self._open_settings())
+
+        # History: a label and a chevron that behave as one control.
+        hist = ctk.CTkFrame(bar, fg_color="transparent")
+        hist.pack(side="right", padx=(0, theme.SP_4))
+        self._hist_label = self._label(hist, "History", tracked=True)
+        self._hist_label.pack(side="left", padx=(0, theme.SP_1))
+        self._hist_chevron = icons.Chevron(hist, bg=CLR_SURFACE, color=CLR_SUBTEXT,
+                                           size=12)
+        self._hist_chevron.pack(side="left")
+        for widget in (hist, self._hist_label, self._hist_chevron):
+            widget.bind("<Button-1>", lambda _: self._toggle_history())
+            widget.configure(cursor="hand2")
+
+        # -- Mode dropdown -------------------------------------------------
+        self._mode_menu = ModeSelect(
             bar,
             values=list(CONTEXT_MODES.keys()),
-            variable=tk.StringVar(value=DEFAULT_CONTEXT_MODE),
-            width=130, height=26,
-            fg_color=CLR_SURFACE1,
-            button_color=CLR_SURFACE1,
-            button_hover_color=CLR_SURFACE2,
-            dropdown_fg_color=CLR_SURFACE,
-            dropdown_hover_color=CLR_SURFACE2,
-            text_color=CLR_AI_LABEL,
-            dropdown_text_color=CLR_TEXT,
-            font=ctk.CTkFont(size=10),
-            dropdown_font=ctk.CTkFont(size=11),
-            corner_radius=4,
+            initial=DEFAULT_CONTEXT_MODE,
             command=self._on_mode_change,
         )
-        self._mode_menu.pack(side="right", padx=(0, 6))
+        self._mode_menu.pack(side="right", padx=(0, theme.SP_3))
 
-        # ── AI toggle ───────────────────────────────────────────────
+        # -- AI toggle -----------------------------------------------------
         ai_row = ctk.CTkFrame(bar, fg_color="transparent")
-        ai_row.pack(side="right", padx=(0, 8))
+        ai_row.pack(side="right", padx=(0, theme.SP_4))
 
-        ctk.CTkLabel(
-            ai_row, text="AI",
-            text_color=CLR_AI_LABEL,
-            font=ctk.CTkFont(size=10, weight="bold"),
-        ).pack(side="left", padx=(0, 3))
+        self._ai_label = self._label(ai_row, "AI", tracked=True)
+        self._ai_label.pack(side="left", padx=(0, theme.SP_2))
 
         self._ai_switch = ctk.CTkSwitch(
             ai_row, text="",
-            width=36, height=18,
-            switch_width=32, switch_height=16,
-            button_color=CLR_AI_LABEL,
-            button_hover_color="#6bcfde",
-            progress_color="#1e3a4a",
+            width=34, height=18,
+            switch_width=30, switch_height=15,
+            fg_color=CLR_SURFACE2,
+            button_color=CLR_TEXT,
+            button_hover_color=CLR_TEXT,
+            progress_color=theme.ACCENT,
             command=self._on_ai_toggle,
         )
         self._ai_switch.select()
         self._ai_switch.pack(side="left")
+        self._sync_ai_label()
+
+    def _sync_ai_label(self):
+        """The label carries the state too, so the switch is not the only tell."""
+        on = bool(self._ai_switch.get())
+        self._ai_label.configure(text_color=theme.ACCENT if on else CLR_SUBTEXT)
 
     def _build_history_panel(self):
-        self._history_panel = ctk.CTkFrame(self._root, fg_color=CLR_BG, corner_radius=0)
+        self._history_panel = ctk.CTkFrame(self._shell, fg_color=CLR_BG, corner_radius=0)
         # Not packed yet — starts hidden
 
         ctk.CTkLabel(
@@ -298,14 +476,14 @@ class HistoryWindow:
         self._root.after(0, lambda: self._add_entry_widget(entry, prepend=True))
 
     def set_status(self, text: str | None = None, color: str | None = None):
-        """Set indicator to custom text. Pass text=None to restore '● Ready'."""
+        """Set the state word and the dot colour. text=None restores Ready."""
         self._root.after(0, lambda: self._do_set_status(text, color))
 
     def set_recording(self, recording: bool):
         self._root.after(0, lambda: self._do_set_recording(recording))
 
     def set_context_mode(self, mode: str):
-        """Switch the mode dropdown and flash the ⟳ auto badge (thread-safe)."""
+        """Switch the mode dropdown and flash the AUTO chip (thread-safe)."""
         self._root.after(0, lambda: self._do_set_context_mode(mode))
 
     def show_update_banner(self, latest: str, url: str):
@@ -332,19 +510,27 @@ class HistoryWindow:
         self._root.focus_force()
 
     def _do_set_status(self, text: str | None, color: str | None):
+        """Colour lives on the dot, words live in the label. They used to be one
+        string ("● Ready"), which meant the state colour and the state name could
+        not differ, and a long status pushed the dot off its own baseline."""
         if text is None:
             if not self._recording:
-                self._indicator.configure(text="● Ready", text_color=CLR_IDLE)
+                self._indicator.configure(text=theme.track("Ready"), text_color=CLR_SUBTEXT)
+                self._dot.set_color(CLR_IDLE)
         else:
-            self._indicator.configure(text=text, text_color=color or CLR_SUBTEXT)
+            self._indicator.configure(text=theme.track(text), text_color=CLR_SUBTEXT)
+            self._dot.set_color(color or CLR_IDLE)
 
     def _do_set_recording(self, recording: bool):
         self._recording = recording
         if recording:
-            self._indicator.configure(text="● Rec", text_color=CLR_RECORDING)
+            self._indicator.configure(text=theme.track("Recording"),
+                                      text_color=CLR_RECORDING)
+            self._dot.set_color(CLR_RECORDING)
             self._pulse()
         else:
-            self._indicator.configure(text="● Ready", text_color=CLR_IDLE)
+            self._indicator.configure(text=theme.track("Ready"), text_color=CLR_SUBTEXT)
+            self._dot.set_color(CLR_IDLE)
 
     def _do_set_context_mode(self, mode: str):
         if mode not in CONTEXT_MODES:
@@ -353,8 +539,8 @@ class HistoryWindow:
         if current == mode:
             return  # no change — don't flash badge
         self._mode_menu.set(mode)
-        # Flash the ⟳ auto badge for 2 seconds
-        self._auto_badge.pack(side="right", padx=(0, 4))
+        # Flash the AUTO chip for two seconds, next to the state it explains.
+        self._auto_badge.pack(side="left", padx=(theme.SP_3, 0))
         self._root.after(2000, self._hide_auto_badge)
 
     def _hide_auto_badge(self):
@@ -367,25 +553,27 @@ class HistoryWindow:
         if not self._recording:
             return
         self._pulse_on = not self._pulse_on
-        self._indicator.configure(text_color=CLR_RECORDING if self._pulse_on else "#7f3d4a")
+        # Only the dot pulses. Pulsing the word made the whole left edge flicker.
+        self._dot.set_color(CLR_RECORDING if self._pulse_on else theme.RECORDING_DIM)
         self._root.after(500, self._pulse)
 
     def _toggle_history(self):
         self._hist_visible = not self._hist_visible
         if self._hist_visible:
             self._history_panel.pack(fill="both", expand=True)
-            self._root.geometry(f"{WINDOW_W}x{HISTORY_H + self._banner_h}")
+            self._resize(HISTORY_H + self._banner_h)
             self._root.resizable(False, True)
-            self._hist_btn.configure(text="▲ History")
         else:
             self._history_panel.pack_forget()
-            self._root.geometry(f"{WINDOW_W}x{COMPACT_H + self._banner_h}")
+            self._resize(COMPACT_H + self._banner_h)
             self._root.resizable(False, False)
-            self._hist_btn.configure(text="▼ History")
+        self._hist_chevron.set_up(self._hist_visible)
+        self._hist_label.configure(
+            text_color=CLR_TEXT if self._hist_visible else CLR_SUBTEXT)
 
     def _build_update_banner(self):
         self._update_banner = ctk.CTkFrame(
-            self._root, fg_color="#1a2f3e", corner_radius=0, height=BANNER_H,
+            self._shell, fg_color=theme.ACCENT_DIM, corner_radius=0, height=BANNER_H,
         )
         self._update_banner.pack_propagate(False)
         # Content populated on first show — not built here
@@ -395,47 +583,36 @@ class HistoryWindow:
             row = ctk.CTkFrame(self._update_banner, fg_color="transparent")
             row.pack(fill="both", expand=True, padx=10)
 
-            ctk.CTkLabel(
-                row, text=f"Update available — v{latest}   ",
-                text_color=CLR_AI_LABEL,
-                font=ctk.CTkFont(size=10),
-            ).pack(side="left")
+            self._label(row, "Update available", tracked=True,
+                        color=theme.ACCENT).pack(side="left", padx=(0, theme.SP_2))
+            self._label(row, f"v{latest}", size=theme.SIZE_SMALL,
+                        color=CLR_TEXT).pack(side="left", padx=(0, theme.SP_3))
 
-            dl = ctk.CTkLabel(
-                row, text="Download →",
-                text_color="#89b4fa",
-                font=ctk.CTkFont(size=10),
-                cursor="hand2",
-            )
+            dl = self._label(row, "Download", tracked=True, color=theme.ACCENT,
+                             cursor="hand2")
             dl.pack(side="left")
             if url:
                 dl.bind("<Button-1>", lambda _: webbrowser.open(url))
 
-            ctk.CTkButton(
-                row, text="✕",
-                width=22, height=22,
-                fg_color="transparent", hover_color=CLR_SURFACE1,
-                text_color=CLR_SUBTEXT, font=ctk.CTkFont(size=9),
-                corner_radius=3,
-                command=self._dismiss_update_banner,
-            ).pack(side="right")
+            dismiss = icons.Close(row, bg=theme.ACCENT_DIM, color=CLR_SUBTEXT, size=12)
+            dismiss.pack(side="right")
+            self._hover_tint(dismiss)
+            dismiss.bind("<Button-1>", lambda _: self._dismiss_update_banner())
 
             self._banner_built = True
 
         self._update_banner.pack(fill="x")
         self._banner_h = BANNER_H
-        h = (HISTORY_H if self._hist_visible else COMPACT_H) + BANNER_H
-        self._root.geometry(f"{WINDOW_W}x{h}")
+        self._resize((HISTORY_H if self._hist_visible else COMPACT_H) + BANNER_H)
 
     def _dismiss_update_banner(self):
         self._update_banner.pack_forget()
         self._banner_h = 0
-        h = HISTORY_H if self._hist_visible else COMPACT_H
-        self._root.geometry(f"{WINDOW_W}x{h}")
+        self._resize(HISTORY_H if self._hist_visible else COMPACT_H)
 
     def _do_set_clipboard_only(self, active: bool):
         if active:
-            self._clip_badge.pack(side="left", padx=(6, 0))
+            self._clip_badge.pack(side="left", padx=(theme.SP_3, 0))
         else:
             try:
                 self._clip_badge.pack_forget()
@@ -457,7 +634,7 @@ class HistoryWindow:
             return
 
         win = ctk.CTkToplevel(self._root)
-        win.title("Settings — Clembot-dictate")
+        win.title("Clembot-dictate settings")
         win.geometry("340x560")
         win.configure(fg_color=CLR_BG)
         win.resizable(False, False)
@@ -466,9 +643,9 @@ class HistoryWindow:
 
         # ── Hotkey section ───────────────────────────────────────────
         ctk.CTkLabel(
-            win, text="⌨  Hotkey",
-            text_color=CLR_TEXT,
-            font=ctk.CTkFont(size=12, weight="bold"),
+            win, text=theme.track("Hotkey"),
+            text_color=theme.ACCENT,
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
             anchor="w",
         ).pack(fill="x", padx=20, pady=(20, 2))
 
@@ -490,9 +667,9 @@ class HistoryWindow:
             key_row, textvariable=key_var,
             width=90, height=30,
             fg_color=CLR_SURFACE1,
-            border_color=CLR_SURFACE2,
-            text_color=CLR_AI_LABEL,
-            font=ctk.CTkFont(size=13, weight="bold"),
+            border_color=CLR_BORDER,
+            text_color=CLR_TEXT,
+            font=ctk.CTkFont(family=theme.mono(), size=theme.SIZE_BODY),
             justify="center",
         )
         key_entry.pack(side="left", padx=(0, 8))
@@ -528,7 +705,7 @@ class HistoryWindow:
                 ok = self._on_rebind(new_key)
                 if ok:
                     self._current_hotkey = new_key
-                    status_label.configure(text="✓ Applied", text_color="#a6e3a1")
+                    status_label.configure(text=theme.track("Applied"), text_color=theme.STATUS_OK)
                 else:
                     status_label.configure(text="✗ Invalid key", text_color=CLR_RECORDING)
             else:
@@ -548,9 +725,9 @@ class HistoryWindow:
             fill="x", padx=20, pady=(20, 0)
         )
         ctk.CTkLabel(
-            win, text="🚀  Startup",
-            text_color=CLR_TEXT,
-            font=ctk.CTkFont(size=12, weight="bold"),
+            win, text=theme.track("Startup"),
+            text_color=theme.ACCENT,
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
             anchor="w",
         ).pack(fill="x", padx=20, pady=(16, 4))
 
@@ -576,8 +753,8 @@ class HistoryWindow:
             width=36, height=18,
             switch_width=32, switch_height=16,
             button_color=CLR_AI_LABEL,
-            button_hover_color="#6bcfde",
-            progress_color="#1e3a4a",
+            button_hover_color=theme.ACCENT_HOVER,
+            progress_color=theme.ACCENT_DIM,
         )
         startup_switch.pack(side="right", padx=(0, 8))
 
@@ -592,17 +769,17 @@ class HistoryWindow:
                 if startup_switch.get():
                     ok = startup.register()
                     startup_status.configure(
-                        text="✓ Registered" if ok else "✗ Failed",
-                        text_color="#a6e3a1" if ok else CLR_RECORDING,
+                        text=theme.track("Registered") if ok else theme.track("Failed"),
+                        text_color=theme.STATUS_OK if ok else CLR_RECORDING,
                     )
                 else:
                     ok = startup.unregister()
                     startup_status.configure(
-                        text="✓ Removed" if ok else "✗ Failed",
+                        text=theme.track("Removed") if ok else theme.track("Failed"),
                         text_color=CLR_SUBTEXT if ok else CLR_RECORDING,
                     )
             except Exception:
-                startup_status.configure(text="✗ Error", text_color=CLR_RECORDING)
+                startup_status.configure(text=theme.track("Error"), text_color=CLR_RECORDING)
 
         startup_switch.configure(command=_toggle_startup)
 
@@ -611,14 +788,14 @@ class HistoryWindow:
             fill="x", padx=20, pady=(16, 0)
         )
         ctk.CTkLabel(
-            win, text="🔑  AI Key",
-            text_color=CLR_TEXT,
-            font=ctk.CTkFont(size=12, weight="bold"),
+            win, text=theme.track("AI Key"),
+            text_color=theme.ACCENT,
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
             anchor="w",
         ).pack(fill="x", padx=20, pady=(16, 2))
 
         ctk.CTkLabel(
-            win, text="Anthropic API key — stored in Windows Credential Manager.",
+            win, text="Anthropic API key. Stored in Windows Credential Manager.",
             text_color=CLR_SUBTEXT,
             font=ctk.CTkFont(size=10),
             anchor="w",
@@ -658,7 +835,7 @@ class HistoryWindow:
                 keyring.set_password("Clembot-dictate", "anthropic_api_key", val)
                 api_key_var.set("")
                 api_key_entry.configure(placeholder_text="sk-ant-... (saved)")
-                api_key_status.configure(text="✓ Saved", text_color="#a6e3a1")
+                api_key_status.configure(text=theme.track("Saved"), text_color=theme.STATUS_OK)
             except Exception as e:
                 api_key_status.configure(text=f"✗ {e}", text_color=CLR_RECORDING)
             api_key_status.pack(side="left")
@@ -688,27 +865,28 @@ class HistoryWindow:
 
         # ── About section ────────────────────────────────────────────
         ctk.CTkLabel(
-            win, text="ℹ  About",
-            text_color=CLR_TEXT,
-            font=ctk.CTkFont(size=12, weight="bold"),
+            win, text=theme.track("About"),
+            text_color=theme.ACCENT,
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
             anchor="w",
         ).pack(fill="x", padx=20, pady=(16, 6))
 
         # Inline hyperlink requires tk.Text with a tagged region
         about = tk.Text(
             win, wrap="word", width=1, height=5,
-            bg=CLR_BG, fg=CLR_SUBTEXT,
-            font=("Segoe UI", 10),
+            bg=CLR_BG, fg=theme.TEXT_SECONDARY,
+            font=(theme.body(), theme.SIZE_BODY),
             relief="flat", borderwidth=0, highlightthickness=0,
             padx=0, pady=0, cursor="arrow", spacing3=3,
         )
         about.pack(fill="x", padx=20, pady=(0, 16))
 
-        about.insert("end", f"Clembot-dictate v{VERSION}  ·  built by the ")
+        about.insert("end", f"Clembot-dictate v{VERSION}  ·  by ")
         about.insert("end", "Wanessa Labs", "link")
-        about.insert("end", " team.")
-        about.insert("end", "\n\nNote: Windows only — Mac already has great open source tooling for this.", "note")
-        about.tag_configure("note", foreground=CLR_SUBTEXT, font=("Segoe UI", 9))
+        about.insert("end", ".\n\nSpeech is transcribed on this machine and never written to disk. ")
+        about.insert("end", "Windows only: the Mac tooling for this is already good.", "note")
+        about.tag_configure("note", foreground=CLR_SUBTEXT,
+                            font=(theme.body(), theme.SIZE_SMALL))
 
         about.tag_configure("link", foreground=CLR_AI_LABEL, underline=True)
         about.tag_bind("link", "<Button-1>", lambda _: webbrowser.open("https://www.wanessalabs.com"))
@@ -754,7 +932,7 @@ class HistoryWindow:
 
         copy_target = entry.text if has_refined else (entry.raw or entry.text)
         copy_btn = ctk.CTkButton(
-            hrow, text="Copy",
+            hrow, text=theme.track("Copy"),
             width=46, height=20,
             fg_color=CLR_SURFACE1, hover_color=CLR_SURFACE2,
             text_color=CLR_TEXT, font=ctk.CTkFont(size=10),
@@ -767,7 +945,7 @@ class HistoryWindow:
         if has_raw and self._on_run_ai:
             run_btn = ctk.CTkButton(
                 hrow,
-                text="↺ Re-run" if has_refined else "✦ Run AI",
+                text=theme.track("Re-run") if has_refined else theme.track("Run AI"),
                 width=68, height=20,
                 fg_color=CLR_RUN_BTN, hover_color=CLR_RUN_HOVER,
                 text_color=CLR_RUN_TEXT, font=ctk.CTkFont(size=10),
@@ -780,7 +958,7 @@ class HistoryWindow:
             raw_block = ctk.CTkFrame(card, fg_color=CLR_BG, corner_radius=5)
             raw_block.pack(fill="x", padx=8, pady=(0, 3))
             ctk.CTkLabel(
-                raw_block, text="RAW",
+                raw_block, text=theme.track("Raw"),
                 text_color=CLR_RAW_LABEL,
                 font=ctk.CTkFont(size=8, weight="bold"),
             ).pack(anchor="w", padx=8, pady=(5, 1))
@@ -813,7 +991,7 @@ class HistoryWindow:
 
     def _build_ai_section(self, ai_frame: ctk.CTkFrame, text: str) -> tk.Text:
         ctk.CTkLabel(
-            ai_frame, text="✦ AI",
+            ai_frame, text=theme.track("AI"),
             text_color=CLR_AI_LABEL,
             font=ctk.CTkFont(size=8, weight="bold"),
         ).pack(anchor="w", padx=8, pady=(5, 1))
@@ -849,7 +1027,7 @@ class HistoryWindow:
         self._root.after(120, lambda: self._setup_ai_expand(refs))
         refs.set_copy_text(refined)
         if refs.run_btn:
-            refs.run_btn.configure(state="normal", text="↺ Re-run")
+            refs.run_btn.configure(state="normal", text=theme.track("Re-run"))
 
     def _setup_ai_expand(self, refs: _CardRefs):
         try:
@@ -866,14 +1044,14 @@ class HistoryWindow:
             def _toggle():
                 if refs._ai_expanded[0]:
                     refs.ai_text.configure(height=MAX_LINES)
-                    refs.ai_expand_btn.configure(text="▼ more")
+                    refs.ai_expand_btn.configure(text=theme.track("more"))
                     refs._ai_expanded[0] = False
                 else:
                     refs.ai_text.configure(height=refs._ai_full_lines[0])
-                    refs.ai_expand_btn.configure(text="▲ less")
+                    refs.ai_expand_btn.configure(text=theme.track("less"))
                     refs._ai_expanded[0] = True
             refs.ai_expand_btn = ctk.CTkButton(
-                refs.ai_frame, text="▼ more",
+                refs.ai_frame, text=theme.track("more"),
                 height=18, fg_color="transparent",
                 hover_color=CLR_SURFACE2, text_color=CLR_SUBTEXT,
                 font=ctk.CTkFont(size=9), anchor="w",
@@ -882,7 +1060,7 @@ class HistoryWindow:
             refs.ai_expand_btn.pack(fill="x", padx=8, pady=(0, 5))
         else:
             refs._ai_expanded[0] = False
-            refs.ai_expand_btn.configure(text="▼ more")
+            refs.ai_expand_btn.configure(text=theme.track("more"))
             refs.ai_expand_btn.pack(fill="x", padx=8, pady=(0, 5))
 
     # ------------------------------------------------------------------
@@ -895,7 +1073,7 @@ class HistoryWindow:
     ) -> tk.Text:
         widget = tk.Text(
             parent, wrap="word", width=1, height=MAX_LINES,
-            font=("Segoe UI", size), bg=bg, fg=fg,
+            font=(theme.body(), size), bg=bg, fg=fg,
             relief="flat", borderwidth=0, highlightthickness=0,
             selectbackground=CLR_SURFACE2, selectforeground=CLR_TEXT,
             padx=8, pady=5, cursor="arrow", spacing3=2,
@@ -912,30 +1090,55 @@ class HistoryWindow:
         def _toggle():
             if expanded[0]:
                 widget.configure(height=MAX_LINES)
-                btn_holder[0].configure(text="▼ more")
+                btn_holder[0].configure(text=theme.track("more"))
                 expanded[0] = False
             else:
                 widget.configure(height=full_lines[0])
-                btn_holder[0].configure(text="▲ less")
+                btn_holder[0].configure(text=theme.track("less"))
                 expanded[0] = True
 
-        def _check():
+        last_width = [0]
+
+        def _check(event=None):
+            """Fit the block to its content, once the block knows how wide it is.
+
+            Called on every <Configure>, so it corrects itself the moment the
+            panel is packed. `last_width` keeps it from re-entering: configuring
+            the height fires another <Configure>, and without the guard that is
+            an infinite loop rather than a layout."""
             try:
-                lines = widget.count("1.0", "end", "displaylines")[0]
+                width = widget.winfo_width()
+                if width <= 1 or (width == last_width[0] and event is not None):
+                    return
+                last_width[0] = width
+
+                counted = widget.count("1.0", "end", "displaylines")
+                if not counted:
+                    return
+                lines = max(1, counted[0])
                 full_lines[0] = lines
-                widget.configure(height=min(MAX_LINES, lines))
+
+                wanted = full_lines[0] if expanded[0] else min(MAX_LINES, lines)
+                if int(widget.cget("height")) != wanted:
+                    widget.configure(height=wanted)
+
                 if lines > MAX_LINES and btn_holder[0] is None:
                     btn = ctk.CTkButton(
-                        parent, text="▼ more",
+                        parent, text=theme.track("more"),
                         height=18, fg_color="transparent",
                         hover_color=CLR_SURFACE2, text_color=CLR_SUBTEXT,
-                        font=ctk.CTkFont(size=9), anchor="w",
+                        font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
+                        anchor="w",
                         command=_toggle,
                     )
-                    btn.pack(fill="x", padx=8, pady=(0, 4))
+                    btn.pack(fill="x", padx=theme.SP_2, pady=(0, theme.SP_1))
                     btn_holder[0] = btn
+                elif lines <= MAX_LINES and btn_holder[0] is not None:
+                    btn_holder[0].destroy()
+                    btn_holder[0] = None
             except Exception:
                 pass
 
+        widget.bind("<Configure>", _check)
         parent.after(120, _check)
         return widget

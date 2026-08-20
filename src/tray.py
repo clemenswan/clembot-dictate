@@ -1,11 +1,12 @@
 """
 System tray icon — pystray + Pillow.
-Two visual states: idle (dark slate) and recording (red).
+Two visual states: idle (brand green) and recording (brand red).
 Menu: Show History, Quit.
 """
 
 from __future__ import annotations
 
+import theme
 import threading
 from typing import Callable
 
@@ -16,6 +17,12 @@ from logger import get_logger
 
 log = get_logger("tray")
 
+def _rgba(hex_color: str, alpha: int = 255) -> tuple:
+    """theme.py speaks CSS hex; Pillow wants a tuple. One conversion, one source."""
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4)) + (alpha,)
+
+
 SIZE = 64   # icon canvas size
 DOT  = 20   # inner dot radius
 
@@ -25,13 +32,13 @@ def _make_icon(recording: bool) -> Image.Image:
     draw = ImageDraw.Draw(img)
 
     # Outer circle
-    bg = (200, 50, 50, 255) if recording else (60, 65, 80, 255)
+    bg = _rgba(theme.RECORDING) if recording else _rgba(theme.ACCENT)
     draw.ellipse([2, 2, SIZE - 2, SIZE - 2], fill=bg)
 
     # Inner mic dot
     cx, cy = SIZE // 2, SIZE // 2
     r = DOT // 2
-    dot_color = (255, 255, 255, 230)
+    dot_color = _rgba(theme.BG)
     draw.ellipse([cx - r, cy - r - 4, cx + r, cy + r - 4], fill=dot_color)
 
     # Mic stand line

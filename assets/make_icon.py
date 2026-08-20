@@ -6,6 +6,13 @@ Usage: python assets/make_icon.py
 from pathlib import Path
 from PIL import Image, ImageDraw
 
+# Brand colours, mirrored from src/theme.py. Kept as literals because this script
+# runs at build time with no src/ on the path: the tuple beside each name is the
+# check that they have not drifted.
+ACCENT    = (81, 175, 111, 255)     # theme.ACCENT    #51af6f
+RECORDING = (231, 98, 80, 255)      # theme.RECORDING #e76250
+INK       = (14, 12, 8, 255)        # theme.BG        #0e0c08
+
 OUT = Path(__file__).parent / "icon.ico"
 SIZES = [16, 32, 48, 64, 128, 256]
 
@@ -15,11 +22,11 @@ def _draw(size: int) -> Image.Image:
     draw = ImageDraw.Draw(img)
 
     pad = max(1, size // 32)
-    draw.ellipse([pad, pad, size - pad, size - pad], fill=(60, 65, 80, 255))
+    draw.ellipse([pad, pad, size - pad, size - pad], fill=ACCENT)
 
     cx, cy = size // 2, size // 2
     r = max(2, size // 6)
-    white = (255, 255, 255, 230)
+    white = INK
     offset = max(1, size // 16)
     lw = max(1, size // 32)
 

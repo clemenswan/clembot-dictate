@@ -46,6 +46,8 @@ ALLOWLIST = (
     "tools/check_release.py",
     "tools/get_model_hash.py",
     "tools/export_public.py",
+    "tools/ui_preview.py",
+
 )
 ALLOWED_DIRS = ("src",)              # every *.py inside, no subdirectories
 NEVER = ("history.json", "CLAUDE.md", "prd.md", "roadmap.md", "lineage.md",

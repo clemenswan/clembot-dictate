@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 # Clembot-dictate — Configuration
 # Edit these values to customize behavior. Restart required for changes to take effect.
@@ -57,6 +57,19 @@ REFINE_BACKEND = "ollama"
 # ---------------------------------------------------------------------------
 OLLAMA_MODEL = "gemma3:4b"
 OLLAMA_HOST  = "http://localhost:11434"
+
+# Refinement sits between the transcript and the paste, so a slow call is a slow
+# paste. Measured 2026-08-20 on a loaded machine: a cold gemma3:4b took 102 s to
+# return eight tokens, because llama-server had crashed and the 3.3 GB model was
+# reloading under memory pressure. With no timeout the app simply waited.
+# Past this, the raw transcript is pasted instead. Words late are worse than words
+# unpolished.
+OLLAMA_TIMEOUT = 25
+
+# Keep the model resident between dictations. Ollama's default unloads after 5
+# minutes idle, which makes every dictation after a coffee break pay the reload.
+# Set to "0" to unload immediately if you would rather have the RAM back.
+OLLAMA_KEEP_ALIVE = "30m"
 
 # ---------------------------------------------------------------------------
 # Anthropic settings
