@@ -67,6 +67,10 @@ way a keyboard shortcut does.
 Download the latest `Clembot-dictate-Setup-<version>.exe` from
 [Releases](https://github.com/clemenswan/clembot-dictate/releases).
 
+> **No binary is published yet.** The 1.1.0 installer is built and in use, but it has not
+> been attached to a release here. Until it is, [Option B](#option-b-from-source) is the
+> way in. Watch the repo if you would rather wait for the installer.
+
 1. Run it. It installs to `%LOCALAPPDATA%\Programs\Clembot-dictate`, no admin rights.
 2. Windows shows **"Windows protected your PC"** because the binary is unsigned. Click
    **More info**, then **Run anyway**. Once per machine.
