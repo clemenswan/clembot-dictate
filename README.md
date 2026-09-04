@@ -65,12 +65,12 @@ way a keyboard shortcut does.
 
 ### Option A: Windows installer
 
-Download `Clembot-dictate-Setup-1.1.1.exe` from
+Download `Clembot-dictate-Setup-1.2.0.exe` from
 [the latest release](https://github.com/clemenswan/clembot-dictate/releases/latest).
-73.6 MiB.
+77.7 MiB.
 
 ```
-SHA256  5a70a7c1b147f6b44be29221ddbac61b775a33b6520f0a4aca39da8dcbf137a9
+SHA256  3b3ff6c5bf5f578d3131e3f93257134b10081834c807c0752b63ca4ca2ba12bf
 ```
 
 1. Run it. It installs to `%LOCALAPPDATA%\Programs\Clembot-dictate`, no admin rights.
