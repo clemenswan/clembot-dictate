@@ -21,6 +21,7 @@ Built by [Wanessa Labs](https://wanessalabs.com). MIT licensed.
 - [Configuration](#configuration)
 - [Context modes](#context-modes)
 - [Voice commands](#voice-commands)
+- [Cleaning pasted text](#cleaning-pasted-text)
 - [How it works](#how-it-works)
 - [Build it yourself](#build-it-yourself)
 - [Troubleshooting](#troubleshooting)
@@ -111,10 +112,12 @@ Full developer setup, including every configuration knob: [docs/setup.md](docs/s
 |---|---|
 | Hold backtick, speak, release | Text pasted at your cursor |
 | Hold Ctrl + backtick, speak, release | A spoken answer instead of text ([see below](#voice-commands)) |
+| Tap Shift + backtick | Clean the clipboard in place ([see below](#cleaning-pasted-text)) |
 | Click the tray icon | Open the history panel |
 | Toggle **AI** in the header | Turn text cleanup on or off for the next dictation |
 | Click **Run AI** on a history card | Re-clean an earlier dictation in a different mode |
 | Right-click tray → **Clipboard only** | Copy instead of pasting, for elevated windows and RDP |
+| Right-click tray → **Clean clipboard** | Same as Shift + backtick, from the menu |
 | Settings → **Hotkey** | Rebind the key. Takes effect immediately, no restart |
 | Settings → **AI Key** | Store an Anthropic key in Windows Credential Manager |
 
@@ -142,6 +145,9 @@ REFINE_WITH_AI  = True
 REFINE_BACKEND  = 'ollama'   # 'ollama' (local, free) or 'anthropic' (cloud)
 OLLAMA_MODEL    = 'gemma3:4b'
 ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
+
+NORMALIZE_OUTPUT        = True   # strip invisible characters before pasting
+CLIPBOARD_CLEAN_ENABLED = True   # Shift + hotkey cleans the clipboard
 
 UPDATE_CHECK_URL = 'https://wanessalabs.com/clembot-dictate/version.json'
 ```
@@ -229,6 +235,72 @@ affects you:
 
 The client is deliberately **standard library only**. An optional feature is not allowed
 to change what the installer has to carry.
+
+---
+
+## Cleaning pasted text
+
+Two related things, both local, both on by default.
+
+**Every dictation is cleaned before it reaches your cursor.** The optional AI pass runs
+your transcript through a language model, and language models emit characters you cannot
+see: zero-width spaces, word joiners, non-breaking and narrow no-break spaces. They land
+invisibly in whatever you were typing into, then break search, diff and word counts
+wherever that text ends up. Set `NORMALIZE_OUTPUT = False` to turn it off.
+
+**Tap Shift and the hotkey to clean your clipboard the same way.** Copy text from
+anywhere, a chat window with an assistant in it being the obvious case, tap the chord, and
+the clipboard is replaced in place with the cleaned version. A tray balloon reports what
+changed, or tells you there was nothing to change. The same action sits on the tray menu
+as **Clean clipboard**. Set `CLIPBOARD_CLEAN_ENABLED = False` to remove both.
+
+This needs no model and no network, so it works while the speech model is still
+downloading on a fresh install.
+
+### What it removes
+
+Characters you cannot see, and spaces that are not the space they appear to be:
+
+| Class | Examples |
+|---|---|
+| Zero-width family | zero-width space, joiner, non-joiner, word joiner, byte order mark |
+| Space lookalikes | non-breaking space, narrow no-break space, and 14 others, all normalised to a plain space |
+| Invisible layout controls | soft hyphen, combining grapheme joiner |
+| Direction overrides | bidirectional controls that can reorder how a line displays |
+| Tag characters, noncharacters, private use | 59 codepoints in total |
+
+### What it does not remove
+
+**Visible punctuation is left alone.** Em dashes, curly quotes and ellipses are ordinary
+characters that ordinary writing uses. Removing them is an editing decision about your
+prose, and this tool does not have an opinion about your prose.
+
+**Lookalike letters are left alone by default.** A Cyrillic "а" inside a Latin word is
+not converted, because the safe cases and the destructive ones are hard to tell apart
+without knowing what language you meant.
+
+**This is not watermark removal, and it proves nothing about authorship.** Text can be
+marked statistically, in word choice itself rather than in the bytes, and nothing here
+touches that. No claim that cleaned text is undetectable, or is human-written, would be
+true, and this project will not make one. What it actually does is narrower and more
+useful: text you paste into a CMS, a repository or a document stops carrying invisible
+characters that confuse the next tool to read it.
+
+### Invisible does not mean disposable
+
+Some invisible characters are load-bearing. Emoji combine with zero-width joiners, flags
+are built from tag sequences, and Arabic, Persian, Devanagari, Hangul and Mongolian all
+use joiners that carry meaning. Stripping those corrupts real text, silently, which would
+be a worse failure than the one this feature exists to fix.
+
+The engine preserves them and strips only free-floating carriers. `src/normalizer_test.py`
+asserts it directly, and the preservation group is the half that matters: an emoji family,
+a heart with a variation selector, a flag tag sequence, and a Persian word whose meaning
+depends on its joiner.
+
+The engine itself is vendored, about 730 lines of pure standard library, MIT, from
+[watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover). Nothing is
+sent anywhere to do this. See `src/vendor/ATTRIBUTION.md` for the exact commit.
 
 ---
 
@@ -333,6 +405,8 @@ Longer version, with log locations and how to read them:
 - **The optional cleanup pass is the only thing that can touch the network**, and only if
   you choose the cloud backend. With the default Ollama backend, nothing leaves the
   machine at all.
+- **Cleaning pasted text is entirely offline.** The invisible-character pass is a local
+  module doing string work. It makes no network call and needs no model.
 - **History is local**, at `%APPDATA%\Clembot-dictate\history.json`. Delete it whenever
   you like; the uninstaller offers to remove it for you.
 - **No telemetry, no analytics, no account.** The only network call the app makes on its

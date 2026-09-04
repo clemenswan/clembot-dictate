@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.2.0
+
+Text hygiene, in two places.
+
+**Every dictation is now stripped of invisible characters before it reaches your cursor.**
+The AI cleanup pass runs your words through a language model, and language models emit
+zero-width spaces, word joiners, non-breaking spaces and narrow no-break spaces. You never
+see them. The next tool to read that text does: search misses, diffs light up, word counts
+drift. Every dictation is cleaned now, refined or raw, and `NORMALIZE_OUTPUT = False`
+turns it off.
+
+**Tap Shift and the hotkey to clean your clipboard the same way.** Copy from anywhere,
+a chat window with an assistant in it being the obvious case, tap the chord, and the
+clipboard is replaced in place. A tray balloon says what changed, or says there was
+nothing to change. It is on the tray menu too, as **Clean clipboard**. It needs no model
+and no network, so it works while the speech model is still downloading on a fresh
+install.
+
+**Visible punctuation is left alone**, deliberately. Em dashes, curly quotes and ellipses
+are ordinary characters that ordinary writing uses, and editing your prose is not this
+tool's job. Lookalike letters are left alone too: a Cyrillic "a" in a Latin word is not
+converted, because the safe cases and the destructive ones are hard to tell apart without
+knowing what language you meant.
+
+**It is not watermark removal and it proves nothing about authorship.** Text can be marked
+statistically, in word choice rather than in the bytes, and nothing here touches that. The
+claim this project will not make is that cleaned text is undetectable or human-written.
+The one it will make is narrower: what you paste stops carrying invisible characters that
+confuse the next tool to read it.
+
+**Invisible does not mean disposable.** Emoji combine with zero-width joiners, flags are
+built from tag sequences, and Arabic, Persian, Devanagari, Hangul and Mongolian use
+joiners that carry meaning. Stripping those would corrupt real text silently, which is a
+worse failure than the one this fixes. The engine keeps them and takes only free-floating
+carriers, and `src/normalizer_test.py` asserts it: an emoji family, a heart with a
+variation selector, a flag tag sequence, and a Persian word whose meaning depends on its
+joiner.
+
+The engine is vendored rather than reimplemented: about 730 lines of pure standard
+library, MIT, from [watermarks-remover](https://github.com/guillaumemeyer/watermarks-remover).
+Nothing is sent anywhere. `src/vendor/ATTRIBUTION.md` records the exact commit.
+
 ## 1.1.1
 
 An interface pass.

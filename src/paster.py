@@ -13,6 +13,19 @@ import pyautogui
 PASTE_DELAY = 0.05  # seconds
 
 
+def read_clipboard() -> str:
+    """Current clipboard text, or "" when it holds nothing readable as text.
+
+    pyperclip raises when the clipboard holds an image or the handle is locked
+    by another process, which is an ordinary thing for a clipboard to be doing.
+    Callers treat that the same as empty.
+    """
+    try:
+        return pyperclip.paste() or ""
+    except Exception:
+        return ""
+
+
 def paste(text: str, clipboard_only: bool = False):
     """Copy text to clipboard and optionally auto-paste into the active window.
 

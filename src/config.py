@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 
 # Clembot-dictate — Configuration
 # Edit these values to customize behavior. Restart required for changes to take effect.
@@ -42,6 +42,27 @@ CHANNELS = 1
 
 # Optional audio cues. True = play a short beep on record start and stop.
 AUDIO_CUES = True
+
+# ---------------------------------------------------------------------------
+# Output normalisation
+# ---------------------------------------------------------------------------
+
+# Strip invisible characters (zero-width spaces, word joiners) and normalise
+# exotic spaces (NBSP, narrow NBSP) from text before it is pasted. LLM
+# refinement emits these; they land invisibly wherever you were typing.
+# Output hygiene only: it does not touch statistical watermarks and proves
+# nothing about authorship. See src/vendor/ATTRIBUTION.md.
+NORMALIZE_OUTPUT = True
+
+# Tap Shift + the hotkey to run that same normalisation over whatever is on the
+# clipboard, in place. Also available from the tray menu. Needs no model and no
+# network, so it works while Whisper is still loading.
+#
+# Layer A only: invisible characters and exotic spaces. It does NOT remove em
+# dashes, curly quotes or ellipses. Those are visible, legitimate characters,
+# and house style is a separate decision this app does not make for you. Set
+# False to disable the Shift branch and hide the tray item.
+CLIPBOARD_CLEAN_ENABLED = True
 
 # ---------------------------------------------------------------------------
 # LLM Refinement

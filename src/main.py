@@ -20,14 +20,16 @@ from pathlib import Path
 import keyboard
 
 from logger import get_logger
-from config import (HOTKEY, MIN_RECORD_SECS, REFINE_WITH_AI, REFINE_BACKEND,
-                    VOICE_COMMAND_ENABLED)
+from config import (CLIPBOARD_CLEAN_ENABLED, HOTKEY, MIN_RECORD_SECS, NORMALIZE_OUTPUT,
+                    REFINE_WITH_AI, REFINE_BACKEND, VOICE_COMMAND_ENABLED)
 from window_detector import get_context_for_active_window
 from cues import play_start, play_stop
 from recorder import Recorder
 from transcriber import Transcriber
 from refiner import Refiner
+import paster
 from paster import paste
+import normalizer
 from history import History, Entry
 from tray import TrayIcon
 from ui import HistoryWindow
@@ -124,6 +126,7 @@ _model_ready  = False
 _is_recording  = False
 _record_start: float | None = None
 _command_utterance = False        # set at key-down, read on release
+_clean_utterance   = False        # ditto, for the Shift branch
 _lock          = threading.Lock()
 
 _press_hook   = None
@@ -212,7 +215,18 @@ def _load_models():
 # ---------------------------------------------------------------------------
 
 def _on_press(_event):
-    global _is_recording, _record_start, _command_utterance
+    global _is_recording, _record_start, _command_utterance, _clean_utterance
+
+    # Shift makes this a clipboard clean rather than a dictation. Checked before
+    # the model-ready guard on purpose: cleaning needs no model, so it works
+    # during the first-launch download. Shift wins over Ctrl.
+    if CLIPBOARD_CLEAN_ENABLED and keyboard.is_pressed("shift"):
+        with _lock:
+            if _is_recording:
+                return
+            _clean_utterance = True
+        return
+
     if not _model_ready:
         return
     with _lock:
@@ -239,7 +253,14 @@ def _on_press(_event):
 
 
 def _on_release(_event):
-    global _is_recording, _record_start
+    global _is_recording, _record_start, _clean_utterance
+
+    with _lock:
+        pending_clean, _clean_utterance = _clean_utterance, False
+    if pending_clean:
+        threading.Thread(target=_clean_clipboard, daemon=True).start()
+        return
+
     if not _model_ready:
         return
     with _lock:
@@ -311,6 +332,14 @@ def _transcribe_and_paste():
         else:
             text = raw
 
+        # Nothing reaches the clipboard un-normalised, refined or not. Never
+        # raises: on any failure it returns the text unchanged.
+        if NORMALIZE_OUTPUT:
+            text, _norm = normalizer.normalize(text)
+            if _norm["removed"] or _norm["replaced"]:
+                log.info("Normalised output: removed=%d replaced=%d",
+                         _norm["removed"], _norm["replaced"])
+
         log.info("Final: %r", text)
         entry = _history.add(text=text, raw=raw)
         if _ui:
@@ -335,6 +364,8 @@ def _on_run_ai(raw: str, entry: Entry, done_cb):
     def worker():
         try:
             refined = _refiner.refine(raw, mode=mode)
+            if NORMALIZE_OUTPUT:
+                refined, _ = normalizer.normalize(refined)
             _history.update_text(entry, refined)
             done_cb(refined)
         except Exception as e:
@@ -342,6 +373,41 @@ def _on_run_ai(raw: str, entry: Entry, done_cb):
             done_cb(raw)
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+# ---------------------------------------------------------------------------
+# Clipboard hygiene
+# ---------------------------------------------------------------------------
+
+def _clean_clipboard():
+    """Normalise whatever is on the clipboard, in place.
+
+    The same Layer A pass dictation output already gets: invisible characters
+    and exotic spaces. Em dashes, curly quotes and ellipses survive on purpose.
+    They are visible, legitimate characters, and removing them is a house-style
+    decision this app does not make for you.
+
+    Every decision lives in normalizer.plan_clipboard_clean, which is pure and
+    tested. This function is the I/O around it, and it writes back only a
+    strict improvement: on any other outcome the original is left untouched.
+    """
+    replacement, message = normalizer.plan_clipboard_clean(paster.read_clipboard())
+
+    if replacement is not None:
+        try:
+            paste(replacement, clipboard_only=True)
+        except Exception as e:
+            log.error("Clipboard clean: write-back failed: %s", e)
+            message = "Could not write the cleaned text back to the clipboard."
+
+    log.info("Clipboard clean: %s", message)
+    if _tray:
+        _tray.notify(message)
+
+
+def _request_clean():
+    """Tray-menu entry point. Off the pystray thread, which must not block."""
+    threading.Thread(target=_clean_clipboard, daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +458,12 @@ def main():
         if _ui:
             _ui.set_clipboard_only(active)
 
-    _tray = TrayIcon(on_show=_ui.show, on_quit=_quit, on_clipboard_toggle=_on_clipboard_change)
+    _tray = TrayIcon(
+        on_show=_ui.show,
+        on_quit=_quit,
+        on_clipboard_toggle=_on_clipboard_change,
+        on_clean=_request_clean if CLIPBOARD_CLEAN_ENABLED else None,
+    )
 
     threading.Thread(target=_start_keyboard_listener, daemon=True).start()
     _tray.run_detached()

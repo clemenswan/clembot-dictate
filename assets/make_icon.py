@@ -50,4 +50,7 @@ if __name__ == "__main__":
     imgs = [_draw(s) for s in SIZES]
     # Pillow uses each image's natural size when sizes= is omitted
     imgs[0].save(OUT, format="ICO", append_images=imgs[1:])
-    print(f"Icon saved → {OUT}")
+    # ASCII only: build.bat treats a non-zero exit as icon failure and pauses, and a
+    # non-UTF-8 console makes this print raise UnicodeEncodeError after the file is
+    # already written. The build then blocks on a success.
+    print(f"Icon saved -> {OUT}")

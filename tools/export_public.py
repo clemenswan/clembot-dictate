@@ -48,6 +48,14 @@ ALLOWLIST = (
     "tools/export_public.py",
     "tools/ui_preview.py",
 
+    # Vendored MIT text engine used by src/normalizer.py. Named explicitly
+    # because ALLOWED_DIRS globs src/*.py NON-recursively: without these three
+    # lines the public build ships normalizer.py with no engine behind it, and
+    # its import guard turns the feature into a silent no-op.
+    "src/vendor/__init__.py",
+    "src/vendor/text_unicode.py",
+    "src/vendor/LICENSE-watermarks-remover",
+    "src/vendor/ATTRIBUTION.md",
 )
 ALLOWED_DIRS = ("src",)              # every *.py inside, no subdirectories
 NEVER = ("history.json", "CLAUDE.md", "prd.md", "roadmap.md", "lineage.md",

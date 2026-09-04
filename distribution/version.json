@@ -1,5 +1,5 @@
 {
-  "latest": "1.1.1",
-  "url": "https://github.com/clemenswan/clembot-dictate/releases/tag/v1.1.1",
-  "notes": "Redesigned interface: the window loses its title bar, the palette moves off a third-party dev theme onto the Wanessa Labs one, and history cards now size to their content instead of padding every entry to three lines."
+  "latest": "1.2.0",
+  "url": "https://github.com/clemenswan/clembot-dictate/releases/tag/v1.2.0",
+  "notes": "Tap Shift and the hotkey to clean the clipboard in place. It strips the invisible characters LLM output carries, zero-width spaces and non-breaking spaces, before they reach a CMS or a diff. Visible punctuation is left alone."
 }

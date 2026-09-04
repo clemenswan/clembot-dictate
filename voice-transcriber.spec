@@ -38,6 +38,11 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports + [
+        # Vendored text engine behind src/normalizer.py. Named explicitly
+        # because its import in normalizer.py sits inside a try/except, and a
+        # missed module there degrades to a silent no-op rather than an error.
+        "vendor",
+        "vendor.text_unicode",
         # Windows API
         "win32gui",
         "win32process",

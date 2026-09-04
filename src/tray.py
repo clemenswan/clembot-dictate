@@ -1,7 +1,7 @@
 """
 System tray icon — pystray + Pillow.
 Two visual states: idle (brand green) and recording (brand red).
-Menu: Show History, Quit.
+Menu: Show History, Clean clipboard, Clipboard only, Quit.
 """
 
 from __future__ import annotations
@@ -49,10 +49,13 @@ def _make_icon(recording: bool) -> Image.Image:
 
 
 class TrayIcon:
-    def __init__(self, on_show: Callable, on_quit: Callable, on_clipboard_toggle: Callable | None = None):
+    def __init__(self, on_show: Callable, on_quit: Callable,
+                 on_clipboard_toggle: Callable | None = None,
+                 on_clean: Callable | None = None):
         self._on_show = on_show
         self._on_quit = on_quit
         self._on_clipboard_toggle = on_clipboard_toggle
+        self._on_clean = on_clean
         self._recording = False
         self._clipboard_only = False
 
@@ -63,6 +66,11 @@ class TrayIcon:
             menu=pystray.Menu(
                 pystray.MenuItem("Show History", self._handle_show, default=True),
                 pystray.Menu.SEPARATOR,
+                pystray.MenuItem(
+                    "Clean clipboard",
+                    self._handle_clean,
+                    visible=lambda item: self._on_clean is not None,
+                ),
                 pystray.MenuItem(
                     "Clipboard only",
                     self._handle_clipboard_toggle,
@@ -101,6 +109,10 @@ class TrayIcon:
         log.info("Clipboard-only mode %s", "on" if self._clipboard_only else "off")
         if self._on_clipboard_toggle:
             self._on_clipboard_toggle(self._clipboard_only)
+
+    def _handle_clean(self, icon, item):
+        if self._on_clean:
+            self._on_clean()
 
     def _handle_show(self, icon, item):
         self._on_show()
