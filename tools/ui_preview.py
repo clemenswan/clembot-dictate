@@ -25,15 +25,21 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 import theme                       # noqa: E402
-from history import History, Entry  # noqa: E402
+from history import History, Entry, CLEAN, DICTATION, QUESTION  # noqa: E402
 from ui import HistoryWindow        # noqa: E402
 
 SAMPLES = [
-    ("um so like can you uh fix the the auth bug from yesterday please",
+    (QUESTION,
+     "how many tests are passing",
+     "Four hundred and sixty eight, all green."),
+    (CLEAN,
+     "Shipping" + chr(0x200B) + " beats planning," + chr(0xA0) + "every time.",
+     "Shipping beats planning, every time."),
+    (DICTATION,
+     "um so like can you uh fix the the auth bug from yesterday please",
      "Fix the authentication bug introduced in yesterday's commit."),
-    ("okay so what I want is a a list of everything that's blocked right now",
-     "List everything currently blocked."),
-    ("send wanessa a note that the the deploy went out and the tests are green",
+    (DICTATION,
+     "send wanessa a note that the the deploy went out and the tests are green",
      "Email Wanessa: the deploy shipped and the test suite is green."),
 ]
 
@@ -63,8 +69,9 @@ def seed() -> History:
     import threading
     history._lock = threading.Lock()
     history._entries = [
-        Entry(timestamp=datetime.now().replace(minute=m).isoformat(), text=refined, raw=raw)
-        for m, (raw, refined) in enumerate(SAMPLES)
+        Entry(timestamp=datetime.now().replace(minute=m).isoformat(),
+              text=out, raw=inp, kind=kind)
+        for m, (kind, inp, out) in enumerate(SAMPLES)
     ]
     history._save = lambda *_args, **_kwargs: None   # belt as well as braces
     return history
@@ -103,7 +110,8 @@ def main() -> int:
     # only onboarding surface the app has, so it gets rendered like any other.
     entries = empty_history() if args.state in ("empty",) else seed()
     window = HistoryWindow(entries, on_run_ai=lambda *_: None,
-                           on_rebind=lambda *_: True)
+                           on_rebind=lambda *_: True,
+                           on_clean=lambda *_: None)
     window._root.deiconify()
     window._root.update()
 

@@ -5,7 +5,7 @@
 ; Compile: ISCC.exe installer.iss  (or run build.bat — it calls ISCC automatically)
 
 #define AppName "Clembot-dictate"
-#define AppVersion "1.2.1"
+#define AppVersion "1.3.0"
 #define AppPublisher "Wanessa Labs"
 #define AppURL "https://wanessalabs.com"
 #define AppExeName "Clembot-dictate.exe"

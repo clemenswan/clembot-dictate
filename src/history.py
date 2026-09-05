@@ -3,7 +3,14 @@ Transcription history — persisted to JSON.
 Thread-safe via a lock; all mutations go through add().
 
 Each Entry stores both the raw Whisper transcript and the AI-refined version.
-Backward-compatible: entries without 'raw' in history.json load with raw="".
+Backward-compatible: entries without 'raw' in history.json load with raw="", and
+entries without 'kind' load as dictations, which is what every entry written
+before 2026-09-05 was.
+
+`kind` exists because three different things now write here and they are not the
+same shape. A dictation has a transcript and a refinement. A question has an
+answer. A clean has a before and an after, and its before is the only copy of
+what your clipboard used to hold.
 """
 
 import json
@@ -27,11 +34,25 @@ HISTORY_FILE = str(_data_dir() / "history.json")
 HISTORY_MAX = 50
 
 
+DICTATION = "dictation"
+QUESTION = "question"
+CLEAN = "clean"
+
+
 @dataclass
 class Entry:
     timestamp: str        # ISO 8601
-    text: str             # AI-refined (what was pasted)
-    raw: str = field(default="")   # Raw Whisper transcript — "" if same as text or AI off
+    text: str             # what was produced: refined transcript, answer, or cleaned text
+    raw: str = field(default="")   # what went in: transcript, question, or original clipboard
+    kind: str = field(default=DICTATION)
+
+    @property
+    def is_clean(self) -> bool:
+        return self.kind == CLEAN
+
+    @property
+    def is_question(self) -> bool:
+        return self.kind == QUESTION
 
     @property
     def display_time(self) -> str:
@@ -51,8 +72,8 @@ class History:
         self._lock = threading.Lock()
         self._entries: List[Entry] = self._load()
 
-    def add(self, text: str, raw: str = "") -> Entry:
-        entry = Entry(timestamp=datetime.now().isoformat(), text=text, raw=raw)
+    def add(self, text: str, raw: str = "", kind: str = DICTATION) -> Entry:
+        entry = Entry(timestamp=datetime.now().isoformat(), text=text, raw=raw, kind=kind)
         with self._lock:
             self._entries.insert(0, entry)
             if len(self._entries) > HISTORY_MAX:
@@ -82,6 +103,7 @@ class History:
                 timestamp=r["timestamp"],
                 text=r["text"],
                 raw=r.get("raw", ""),
+                kind=r.get("kind", DICTATION),
             ) for r in data]
         except Exception:
             return []

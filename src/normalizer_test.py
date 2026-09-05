@@ -12,7 +12,8 @@ script joiners must survive untouched.
 
 import sys
 
-from normalizer import is_available, normalize, plan_clipboard_clean
+from normalizer import (is_available, normalize, plan_clipboard_clean,
+                        describe_changes)
 
 # Carriers: should be removed or normalised.
 STRIP = [
@@ -82,6 +83,29 @@ def main() -> int:
          all(plan_clipboard_clean(t)[1] for t in ("", "clean", dirty))),
     ]
     for name, ok in cases:
+        failures += not ok
+        print("%-28s %s" % (name, "ok" if ok else "FAIL"))
+
+    print()
+    print("-- change descriptions --")
+    # These are what a Cleaned card shows instead of the same sentence twice.
+    # A clean only touches characters you cannot see, so the text is not the
+    # story: the tally is.
+    dirty2 = "Shipping" + chr(0x200B) + " beats planning," + chr(0xA0) + "every time."
+    desc = describe_changes(dirty2)
+    cases2 = [
+        ("dirty -> two lines",     len(desc) == 2),
+        ("names the character",    any("zero width space" in d for d in desc)),
+        ("says removed",           any(d.endswith("removed") for d in desc)),
+        ("says replaced",          any(d.endswith("replaced") for d in desc)),
+        # Case-insensitive on purpose: _friendly lowercases, so a check for
+        # "U+" can never fail and a mutation proved exactly that.
+        ("no codepoint noise",     not any("u+" in d.lower() for d in desc)),
+        ("clean text -> nothing",  describe_changes("Plain text.") == []),
+        ("empty -> nothing",       describe_changes("") == []),
+        ("em dash -> nothing",     describe_changes("a" + chr(0x2014) + "b") == []),
+    ]
+    for name, ok in cases2:
         failures += not ok
         print("%-28s %s" % (name, "ok" if ok else "FAIL"))
 

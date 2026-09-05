@@ -21,8 +21,9 @@ import keyboard
 
 import theme
 from logger import get_logger
-from config import (CLIPBOARD_CLEAN_ENABLED, HOTKEY, MIN_RECORD_SECS, NORMALIZE_OUTPUT,
-                    REFINE_WITH_AI, REFINE_BACKEND, VOICE_COMMAND_ENABLED)
+from config import (CLIPBOARD_CLEAN_ENABLED, CLIPBOARD_CLEAN_HISTORY, HOTKEY,
+                    MIN_RECORD_SECS, NORMALIZE_OUTPUT, REFINE_WITH_AI, REFINE_BACKEND,
+                    VOICE_COMMAND_ENABLED)
 from window_detector import get_context_for_active_window
 from cues import play_start, play_stop
 from recorder import Recorder
@@ -31,7 +32,7 @@ from refiner import Refiner
 import paster
 from paster import paste
 import normalizer
-from history import History, Entry
+from history import History, Entry, CLEAN, QUESTION
 from tray import TrayIcon
 from ui import HistoryWindow
 from updater import check_for_update
@@ -318,7 +319,10 @@ def _ask_voice_command(audio) -> bool:
         return False
 
     log.info("Voice command [tier %s/%s]: %r", reply.tier, reply.intent, reply.speech)
-    entry = _history.add(text=reply.speech, raw="[voice command]")
+    # raw carries what the sidecar understood, when it says. A question card
+    # reads as a question rather than as a dictation whose transcript went
+    # missing, which is what raw="[voice command]" used to produce.
+    entry = _history.add(text=reply.speech, raw=reply.detail or "", kind=QUESTION)
     if _ui:
         _ui.add_entry(entry)
     return True                                  # the sidecar speaks; nothing is pasted
@@ -405,7 +409,8 @@ def _clean_clipboard():
     tested. This function is the I/O around it, and it writes back only a
     strict improvement: on any other outcome the original is left untouched.
     """
-    replacement, message = normalizer.plan_clipboard_clean(paster.read_clipboard())
+    original = paster.read_clipboard()
+    replacement, message = normalizer.plan_clipboard_clean(original)
 
     if replacement is not None:
         try:
@@ -413,6 +418,14 @@ def _clean_clipboard():
         except Exception as e:
             log.error("Clipboard clean: write-back failed: %s", e)
             message = "Could not write the cleaned text back to the clipboard."
+        else:
+            # The clipboard has no undo, so the record IS the undo: this is the
+            # only remaining copy of what the user had before. Only written when
+            # something actually changed, and only if they left it switched on.
+            if CLIPBOARD_CLEAN_HISTORY and _history:
+                entry = _history.add(text=replacement, raw=original, kind=CLEAN)
+                if _ui:
+                    _ui.add_entry(entry)
 
     log.info("Clipboard clean: %s", message)
     if _tray:
@@ -466,7 +479,8 @@ def main():
     # History is lightweight (reads JSON) — init synchronously before UI.
     _history = History()
 
-    _ui   = HistoryWindow(_history, on_run_ai=_on_run_ai, on_rebind=_on_rebind)
+    _ui   = HistoryWindow(_history, on_run_ai=_on_run_ai, on_rebind=_on_rebind,
+                          on_clean=_request_clean if CLIPBOARD_CLEAN_ENABLED else None)
 
     def _on_clipboard_change(active: bool):
         if _ui:

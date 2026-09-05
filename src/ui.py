@@ -57,9 +57,10 @@ from PIL import Image, ImageDraw, ImageTk
 
 import theme
 import icons
-from history import History, Entry
+from history import History, Entry, CLEAN, QUESTION
 from config import (CONTEXT_MODES, DEFAULT_CONTEXT_MODE, HOTKEY, AUTO_CONTEXT, VERSION,
                     CLIPBOARD_CLEAN_ENABLED, VOICE_COMMAND_ENABLED)
+import normalizer
 import startup
 from logger import get_logger
 
@@ -88,11 +89,21 @@ CLR_RUN_HOVER = theme.ACCENT_DIM_HOVER
 CLR_RUN_TEXT  = theme.ACCENT
 CLR_BORDER    = theme.BORDER
 
-WINDOW_W   = 520
+WINDOW_W   = 580   # 520 until CLEAN joined the bar and READY collided with AI
 COMPACT_H  = 44    # header only. Was 52 plus a ~32px title bar we no longer draw.
 BANNER_H   = 30    # update notification banner
 HISTORY_H  = 520   # header + history panel
 MAX_LINES  = 3
+
+
+KIND_WORDS = {
+    QUESTION: ("Asked", "Answer", "Question"),
+    # Not Before/After. A clean only ever touches characters you cannot see, so
+    # a before block and an after block render the same sentence twice and the
+    # card teaches nothing. The top block says what changed instead.
+    CLEAN:    ("Changed", "Clipboard", "Cleaned"),
+}
+DEFAULT_WORDS = ("Raw", "AI", None)   # a dictation is the default and gets no chip
 
 
 @dataclass
@@ -236,10 +247,12 @@ class HistoryWindow:
             ).grid(row=i, column=1, sticky="nw", padx=(theme.SP_3, 0), pady=(0, 6))
         return frame
 
-    def __init__(self, history: History, on_run_ai: Callable | None = None, on_rebind: Callable | None = None):
+    def __init__(self, history: History, on_run_ai: Callable | None = None,
+                 on_rebind: Callable | None = None, on_clean: Callable | None = None):
         self._history      = history
         self._on_run_ai    = on_run_ai
         self._on_rebind    = on_rebind
+        self._on_clean     = on_clean
         self._recording    = False
         self._pulse_on     = False
         self._hist_visible = False
@@ -436,6 +449,26 @@ class HistoryWindow:
         for widget in (hist, self._hist_label, self._hist_chevron):
             widget.bind("<Button-1>", lambda _: self._toggle_history())
             widget.configure(cursor="hand2")
+
+        # -- Clean clipboard ----------------------------------------------
+        # A tracked text label, because that is how this bar speaks: AI and
+        # HISTORY are labels, and icons here are structural chrome only (grip,
+        # dot, chevron, menu, close). A 14px glyph meaning "clean text" would
+        # be a guess, and the glyph the old bar used for this was an emoji.
+        #
+        # Only the one-shot action gets a control. Asking a question is
+        # hold-to-talk, and a click could only mean "start, click again to
+        # stop", which is a mode. A mode you forget you are in pastes an
+        # answer into a document.
+        if CLIPBOARD_CLEAN_ENABLED and self._on_clean:
+            self._clean_label = self._label(bar, "Clean", tracked=True)
+            self._clean_label.pack(side="right", padx=(0, theme.SP_4))
+            self._clean_label.configure(cursor="hand2")
+            self._clean_label.bind("<Button-1>", lambda _: self._on_clean())
+            self._clean_label.bind(
+                "<Enter>", lambda _: self._clean_label.configure(text_color=theme.ACCENT))
+            self._clean_label.bind(
+                "<Leave>", lambda _: self._clean_label.configure(text_color=CLR_SUBTEXT))
 
         # -- Mode dropdown -------------------------------------------------
         self._mode_menu = ModeSelect(
@@ -1041,6 +1074,11 @@ class HistoryWindow:
     def _build_card(self, card: ctk.CTkFrame, entry: Entry) -> _CardRefs:
         has_raw     = bool(entry.raw)
         has_refined = entry.has_refinement
+        in_word, out_word, chip_word = KIND_WORDS.get(entry.kind, DEFAULT_WORDS)
+
+        # A question has an answer, not a refinement, and a clean has an original,
+        # not a transcript. Re-running either through the refiner is meaningless.
+        offer_run_ai = entry.kind not in KIND_WORDS
 
         # ── Header row ───────────────────────────────────────────────
         hrow = ctk.CTkFrame(card, fg_color="transparent")
@@ -1049,8 +1087,14 @@ class HistoryWindow:
         ctk.CTkLabel(
             hrow, text=entry.display_time,
             text_color=CLR_SUBTEXT,
-            font=ctk.CTkFont(size=10),
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
         ).pack(side="left")
+
+        # Only the exceptions are marked. A chip on every card, including the
+        # dictations that are most of the list, is noise rather than a signal.
+        if chip_word:
+            self._chip(hrow, chip_word, color=theme.ACCENT,
+                       fill=theme.ACCENT_DIM).pack(side="left", padx=(theme.SP_2, 0))
 
         copy_target = entry.text if has_refined else (entry.raw or entry.text)
         copy_btn = ctk.CTkButton(
@@ -1063,8 +1107,21 @@ class HistoryWindow:
         )
         copy_btn.pack(side="right", padx=(3, 0))
 
+        # The clipboard has no undo. This is it.
+        if entry.is_clean and entry.raw:
+            restore = ctk.CTkButton(
+                hrow, text=theme.track("Restore"),
+                width=64, height=20,
+                fg_color=CLR_SURFACE1, hover_color=CLR_SURFACE2,
+                text_color=CLR_TEXT,
+                font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
+                corner_radius=4,
+                command=lambda t=entry.raw: pyperclip.copy(t),
+            )
+            restore.pack(side="right", padx=(3, 0))
+
         run_btn = None
-        if has_raw and self._on_run_ai:
+        if has_raw and offer_run_ai and self._on_run_ai:
             run_btn = ctk.CTkButton(
                 hrow,
                 text=theme.track("Re-run") if has_refined else theme.track("Run AI"),
@@ -1076,28 +1133,34 @@ class HistoryWindow:
             run_btn.pack(side="right", padx=(0, 3))
 
         # ── Body ─────────────────────────────────────────────────────
+        top_text = entry.raw
+        if entry.is_clean:
+            changes = normalizer.describe_changes(entry.raw)
+            top_text = chr(10).join(changes) if changes else "Nothing visible changed."
+
         if has_raw:
             raw_block = ctk.CTkFrame(card, fg_color=CLR_BG, corner_radius=5)
             raw_block.pack(fill="x", padx=8, pady=(0, 3))
             ctk.CTkLabel(
-                raw_block, text=theme.track("Raw"),
+                raw_block, text=theme.track(in_word),
                 text_color=CLR_RAW_LABEL,
                 font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
             ).pack(anchor="w", padx=8, pady=(5, 1))
-            self._selectable_text(raw_block, entry.raw, CLR_BG, CLR_RAW_TEXT, size=11)
+            self._selectable_text(raw_block, top_text, CLR_BG, CLR_RAW_TEXT, size=11)
 
             divider = ctk.CTkFrame(card, fg_color=CLR_SURFACE2, height=1, corner_radius=0)
             if has_refined:
                 divider.pack(fill="x", padx=8, pady=(0, 3))
 
             ai_frame = ctk.CTkFrame(card, fg_color=CLR_SURFACE1, corner_radius=5)
-            ai_text  = self._build_ai_section(ai_frame, entry.text if has_refined else "")
+            ai_text  = self._build_ai_section(ai_frame, entry.text if has_refined else "",
+                                              label=out_word)
             if has_refined:
                 ai_frame.pack(fill="x", padx=8, pady=(0, 8))
         else:
             divider  = ctk.CTkFrame(card, fg_color=CLR_SURFACE2, height=1, corner_radius=0)
             ai_frame = ctk.CTkFrame(card, fg_color=CLR_SURFACE1, corner_radius=5)
-            ai_text  = self._build_ai_section(ai_frame, "")
+            ai_text  = self._build_ai_section(ai_frame, "", label=out_word)
             self._selectable_text(card, entry.text, CLR_SURFACE, CLR_TEXT, size=12, pady=(0, 10))
 
         refs = _CardRefs(
@@ -1111,9 +1174,9 @@ class HistoryWindow:
 
         return refs
 
-    def _build_ai_section(self, ai_frame: ctk.CTkFrame, text: str) -> tk.Text:
+    def _build_ai_section(self, ai_frame: ctk.CTkFrame, text: str, label: str = "AI") -> tk.Text:
         ctk.CTkLabel(
-            ai_frame, text=theme.track("AI"),
+            ai_frame, text=theme.track(label),
             text_color=CLR_AI_LABEL,
             font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
         ).pack(anchor="w", padx=8, pady=(5, 1))

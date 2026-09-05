@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 
 # Clembot-dictate — Configuration
 # Edit these values to customize behavior. Restart required for changes to take effect.
@@ -63,6 +63,15 @@ NORMALIZE_OUTPUT = True
 # and house style is a separate decision this app does not make for you. Set
 # False to disable the Shift branch and hide the tray item.
 CLIPBOARD_CLEAN_ENABLED = True
+
+# Record each clipboard clean in the history panel, so you can see what changed
+# and put the original back. The clipboard has no undo of its own.
+#
+# This writes clipboard text to %APPDATA%\Clembot-dictate\history.json, which
+# until now held only your own dictations. If you clean text you would not want
+# on disk, set this to False. The Shift branch still works; it just leaves no
+# record, and then a clean cannot be undone.
+CLIPBOARD_CLEAN_HISTORY = True
 
 # ---------------------------------------------------------------------------
 # LLM Refinement

@@ -65,12 +65,12 @@ way a keyboard shortcut does.
 
 ### Option A: Windows installer
 
-Download `Clembot-dictate-Setup-1.2.1.exe` from
+Download `Clembot-dictate-Setup-1.3.0.exe` from
 [the latest release](https://github.com/clemenswan/clembot-dictate/releases/latest).
 77.7 MiB.
 
 ```
-SHA256  d41fbe0bdaab289c42471bef002fee4b1b2c8f1125a1c601706d1be7b7278ff2
+SHA256  d3981de565a38a1d41febd6f407c9b973ae02c5c68bdfc0297897e7f35dee187
 ```
 
 1. Run it. It installs to `%LOCALAPPDATA%\Programs\Clembot-dictate`, no admin rights.
@@ -118,6 +118,8 @@ Full developer setup, including every configuration knob: [docs/setup.md](docs/s
 | Click **Run AI** on a history card | Re-clean an earlier dictation in a different mode |
 | Right-click tray → **Clipboard only** | Copy instead of pasting, for elevated windows and RDP |
 | Right-click tray → **Clean clipboard** | Same as Shift + backtick, from the menu |
+| Click **Clean** in the bar | Same again. Asking a question has no button on purpose: it is hold-to-talk |
+| Click **Restore** on a cleaned entry | Put the original text back on your clipboard |
 | Settings → **Hotkey** | Rebind the key. Takes effect immediately, no restart |
 | Settings → **AI Key** | Store an Anthropic key in Windows Credential Manager |
 
@@ -152,6 +154,7 @@ ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
 
 NORMALIZE_OUTPUT        = True   # strip invisible characters before pasting
 CLIPBOARD_CLEAN_ENABLED = True   # Shift + hotkey cleans the clipboard
+CLIPBOARD_CLEAN_HISTORY = True   # record each clean so it can be undone
 
 UPDATE_CHECK_URL = 'https://wanessalabs.com/clembot-dictate/version.json'
 ```
@@ -411,6 +414,10 @@ Longer version, with log locations and how to read them:
   machine at all.
 - **Cleaning pasted text is entirely offline.** The invisible-character pass is a local
   module doing string work. It makes no network call and needs no model.
+- **Cleaned clipboard text is written to your history file**, because the clipboard has
+  no undo and the stored original is what **Restore** puts back. If you clean something
+  you would rather not keep on disk, set `CLIPBOARD_CLEAN_HISTORY = False`; cleaning
+  still works, it just cannot be undone.
 - **History is local**, at `%APPDATA%\Clembot-dictate\history.json`. Delete it whenever
   you like; the uninstaller offers to remove it for you.
 - **No telemetry, no analytics, no account.** The only network call the app makes on its

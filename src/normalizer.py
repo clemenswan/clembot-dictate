@@ -88,3 +88,42 @@ def plan_clipboard_clean(text: str) -> tuple[str | None, str]:
 
     return cleaned, "Cleaned: %d removed, %d replaced." % (
         stats["removed"], stats["replaced"])
+
+
+def describe_changes(original: str) -> list[str]:
+    """Human lines for what a clean did to `original`. Never raises.
+
+    Derived on demand rather than stored on the history entry. The engine is the
+    authority on what it changed, and a description saved next to the text would
+    go stale the moment the engine is updated while the text stayed the same.
+
+    Returns [] when nothing changed or the engine is unavailable, so a caller can
+    treat "no lines" as "nothing to say".
+    """
+    if not original or not _AVAILABLE:
+        return []
+    try:
+        _, stats = _clean_text(original)
+    except Exception as exc:
+        log.warning("Change description failed (%s).", exc)
+        return []
+
+    lines = []
+    for bucket, verb in (("removed", "removed"), ("replaced", "replaced")):
+        for name, count in sorted((stats or {}).get(bucket, {}).items()):
+            lines.append("%d %s %s" % (count, _friendly(name), verb))
+    return lines
+
+
+def _friendly(name: str) -> str:
+    """'U+200B ZERO WIDTH SPACE (Cf)' -> 'zero width space'.
+
+    The codepoint and the Unicode general category are correct, and are noise to
+    anyone who is not debugging this. The name is the part that says what it was.
+    """
+    parts = name.split()
+    if parts and parts[0].startswith("U+"):
+        parts = parts[1:]
+    if parts and parts[-1].startswith("("):
+        parts = parts[:-1]
+    return " ".join(parts).lower() or name

@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.3.0
+
+Cleaning the clipboard now leaves something behind.
+
+**A clean can be undone.** The clipboard has no undo of its own, so until now
+cleaning was a one-way door: a tray balloon told you what changed and then it was
+gone, along with the original. Every clean is recorded in the history panel now,
+and **Restore** puts the original text back on your clipboard.
+
+**A cleaned entry shows what changed, not before and after.** Cleaning only ever
+touches characters you cannot see, so two blocks of text would render the same
+sentence twice and teach you nothing. The card lists the actual tally instead:
+`1 zero width space removed`, `1 no-break space replaced`. Underneath is what is
+sitting on your clipboard now.
+
+**Questions you asked appear too.** A voice command used to be filed as a
+dictation whose transcript had gone missing. It is its own kind now, with what
+the sidecar heard and the answer it spoke.
+
+**Clean is a control on the bar**, next to History. Asking a question is not, on
+purpose: cleaning is one-shot and a click maps to it exactly, while asking is
+hold-to-talk, and a click could only mean start-then-click-again-to-stop. That is
+a mode, and a mode you forget you are in pastes an answer into a document.
+
+**One thing worth knowing.** Recording a clean writes that clipboard text to
+`history.json`, which before this release held only your own dictations. If you
+clean something you would rather not keep on disk, set
+`CLIPBOARD_CLEAN_HISTORY = False`. Cleaning still works; it just cannot be undone.
+
+The bar is 580px wide rather than 520. At the old width the new control pushed
+the `AI` label into the status text.
+
 ## 1.2.1
 
 The interface now says what the app can do.

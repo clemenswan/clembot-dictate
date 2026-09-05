@@ -1,5 +1,5 @@
 {
-  "latest": "1.2.1",
-  "url": "https://github.com/clemenswan/clembot-dictate/releases/tag/v1.2.1",
-  "notes": "The interface now says what the app can do. Every shortcut is listed in Settings and on the empty history panel, including the two that shipped without the UI ever mentioning them."
+  "latest": "1.3.0",
+  "url": "https://github.com/clemenswan/clembot-dictate/releases/tag/v1.3.0",
+  "notes": "Cleaning the clipboard now leaves a record you can undo. The history panel shows what each clean changed, keeps the original, and puts it back on one click. Questions you asked appear there too, and Clean is a control on the bar."
 }

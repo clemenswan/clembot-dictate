@@ -47,7 +47,7 @@ if exist "%ISCC%" (
     if errorlevel 1 (
         echo WARNING: Installer compilation failed. EXE is still in dist\Clembot-dictate\
     ) else (
-        echo Installer: dist\Clembot-dictate-Setup-1.2.1.exe
+        echo Installer: dist\Clembot-dictate-Setup-1.3.0.exe
     )
 ) else (
     echo.
@@ -60,7 +60,7 @@ echo.
 echo ========================================
 echo  Build complete.
 echo  EXE:       dist\Clembot-dictate\Clembot-dictate.exe
-echo  Installer: dist\Clembot-dictate-Setup-1.2.1.exe (if Inno Setup installed)
+echo  Installer: dist\Clembot-dictate-Setup-1.3.0.exe (if Inno Setup installed)
 echo.
 echo  First-run note:
 echo  The faster-whisper model (~74 MB) will download
