@@ -38,6 +38,19 @@ SAMPLES = [
 ]
 
 
+def empty_history() -> History:
+    """A History with nothing in it, and no path, for the empty-state shot.
+
+    Same __new__ trick as seed() and for the same reason: History() writes to
+    the real %APPDATA% file, which this harness once did to a real person.
+    """
+    import threading
+    history = History.__new__(History)
+    history._lock = threading.Lock()
+    history._entries = []
+    return history
+
+
 def seed() -> History:
     r"""An in-memory History that cannot touch the real file.
 
@@ -81,12 +94,15 @@ def shoot(window: HistoryWindow, name: str, out: Path):
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", default="compact",
-                        choices=("compact", "recording", "history", "settings", "all"))
+                        choices=("compact", "recording", "history", "empty", "settings", "all"))
     parser.add_argument("--out", default=str(ROOT / "docs" / "ui"))
     args = parser.parse_args()
 
     out = Path(args.out)
-    window = HistoryWindow(seed(), on_run_ai=lambda *_: None,
+    # The empty state needs a window with no history behind it, and it is the
+    # only onboarding surface the app has, so it gets rendered like any other.
+    entries = empty_history() if args.state in ("empty",) else seed()
+    window = HistoryWindow(entries, on_run_ai=lambda *_: None,
                            on_rebind=lambda *_: True)
     window._root.deiconify()
     window._root.update()
@@ -104,6 +120,11 @@ def main() -> int:
     if "history" in wanted:
         window._toggle_history()
         shoot(window, "03-history", out)
+        window._toggle_history()
+
+    if "empty" in wanted:
+        window._toggle_history()
+        shoot(window, "05-empty", out)
         window._toggle_history()
 
     if args.state == "settings":

@@ -58,8 +58,12 @@ from PIL import Image, ImageDraw, ImageTk
 import theme
 import icons
 from history import History, Entry
-from config import CONTEXT_MODES, DEFAULT_CONTEXT_MODE, HOTKEY, AUTO_CONTEXT, VERSION
+from config import (CONTEXT_MODES, DEFAULT_CONTEXT_MODE, HOTKEY, AUTO_CONTEXT, VERSION,
+                    CLIPBOARD_CLEAN_ENABLED, VOICE_COMMAND_ENABLED)
 import startup
+from logger import get_logger
+
+log = get_logger("ui")
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -182,6 +186,56 @@ class ModeSelect(ctk.CTkFrame):
 
 
 class HistoryWindow:
+    """The 44px bar, the history panel, and the settings dialog.
+
+    On discoverability: this app is four features deep and only ever showed one
+    of them. Voice commands shipped in 1.1.0 and the interface never mentioned
+    Ctrl at all; clipboard cleaning shipped in 1.2.0 the same way. The bar is
+    deliberately not the fix. It is 44px and its restraint is the design. The
+    two surfaces that carry the list instead are the empty state, which a new
+    user is guaranteed to see once, and Settings, which is where you go when you
+    want to know what a tool does.
+    """
+
+    @property
+    def SHORTCUTS(self) -> list[tuple[str, str]]:
+        """Chords to advertise, filtered by what is actually switched on.
+
+        Read from config rather than written out, because a hardcoded list keeps
+        promising a feature after someone turns it off, and the config flags do
+        exactly that: CLIPBOARD_CLEAN_ENABLED hides the tray item too.
+        """
+        rows = [(f"Hold  {HOTKEY}", "Dictate. Speak, release, text at your cursor")]
+        if VOICE_COMMAND_ENABLED:
+            rows.append((f"Ctrl + {HOTKEY}", "Ask a question. The answer is spoken aloud"))
+        if CLIPBOARD_CLEAN_ENABLED:
+            rows.append((f"Shift + {HOTKEY}", "Clean the clipboard. Strips invisible characters"))
+        return rows
+
+    def _shortcut_grid(self, master, chord_w: int = 78, wrap: int = 0):
+        """The chord list as a two-column grid. Returns the frame, unplaced.
+
+        Grid, not one packed row per chord: packed rows size to their own
+        content, so three centred rows put their columns at three different x
+        positions. Measured 78 / 78 / 78 with grid, ragged without it.
+        """
+        frame = ctk.CTkFrame(master, fg_color="transparent")
+        frame.grid_columnconfigure(0, minsize=chord_w, weight=0)
+        frame.grid_columnconfigure(1, weight=1)
+        for i, (chord, what) in enumerate(self.SHORTCUTS):
+            ctk.CTkLabel(
+                frame, text=chord,
+                font=ctk.CTkFont(family=theme.mono(), size=theme.SIZE_SMALL),
+                text_color=theme.ACCENT, anchor="w",
+            ).grid(row=i, column=0, sticky="nw", pady=(0, 6))
+            ctk.CTkLabel(
+                frame, text=what, text_color=CLR_SUBTEXT,
+                font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
+                anchor="w", justify="left",
+                **({"wraplength": wrap} if wrap else {}),
+            ).grid(row=i, column=1, sticky="nw", padx=(theme.SP_3, 0), pady=(0, 6))
+        return frame
+
     def __init__(self, history: History, on_run_ai: Callable | None = None, on_rebind: Callable | None = None):
         self._history      = history
         self._on_run_ai    = on_run_ai
@@ -423,9 +477,9 @@ class HistoryWindow:
         # Not packed yet — starts hidden
 
         ctk.CTkLabel(
-            self._history_panel, text="HISTORY",
+            self._history_panel, text=theme.track("History"),
             text_color=CLR_SUBTEXT,
-            font=ctk.CTkFont(size=9, weight="bold"),
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
         ).pack(anchor="w", padx=14, pady=(8, 3))
 
         self._scroll = ctk.CTkScrollableFrame(
@@ -440,22 +494,19 @@ class HistoryWindow:
         self._empty_state = ctk.CTkFrame(self._scroll, fg_color="transparent")
         self._empty_state.pack(fill="x", pady=48)
 
-        ctk.CTkLabel(
-            self._empty_state, text="🎙",
-            font=ctk.CTkFont(size=34),
-            text_color=CLR_SURFACE2,
-        ).pack()
+        icons.Mic(self._empty_state, bg=CLR_BG, color=CLR_SURFACE2, size=28).pack()
         ctk.CTkLabel(
             self._empty_state, text="No dictations yet",
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_BODY,
+                             weight="bold"),
             text_color=CLR_IDLE,
-        ).pack(pady=(10, 4))
-        ctk.CTkLabel(
-            self._empty_state,
-            text=f"Hold  [ {HOTKEY} ]  anywhere to start",
-            font=ctk.CTkFont(size=11),
-            text_color=CLR_SURFACE2,
-        ).pack()
+        ).pack(pady=(10, 2))
+
+        # The empty state is the only place in the app that ever taught a
+        # shortcut, and it taught exactly one. Three exist. It also disappears
+        # the moment a first dictation lands, so Settings carries the same list
+        # permanently.
+        self._shortcut_grid(self._empty_state, chord_w=68).pack(pady=(10, 0))
 
         # Load existing history entries (hides empty state if any exist)
         for entry in self._history.get_all():
@@ -635,11 +686,34 @@ class HistoryWindow:
 
         win = ctk.CTkToplevel(self._root)
         win.title("Clembot-dictate settings")
+        # Height is measured after the content is built, not guessed. The
+        # previous fixed 560 silently clipped the About paragraph the moment two
+        # sections were added, and a settings dialog only grows.
         win.geometry("340x560")
         win.configure(fg_color=CLR_BG)
         win.resizable(False, False)
         win.grab_set()   # modal
         self._settings_win = win
+
+        # ── Shortcuts section ──────────────────────────────
+        # First, because every other section here configures the tool and this
+        # one is the only place that says what it can do. The same list renders
+        # in the empty state, from the same property, so they cannot disagree.
+        ctk.CTkLabel(
+            win, text=theme.track("Shortcuts"),
+            text_color=theme.ACCENT,
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
+            anchor="w",
+        ).pack(fill="x", padx=20, pady=(20, 6))
+
+        self._shortcut_grid(win, chord_w=66, wrap=214).pack(fill="x", padx=20)
+
+        ctk.CTkLabel(
+            win, text="Right-click the tray icon for Clean clipboard and Clipboard only.",
+            text_color=CLR_SUBTEXT,
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
+            anchor="w", justify="left", wraplength=300,
+        ).pack(fill="x", padx=20, pady=(2, 0))
 
         # ── Hotkey section ───────────────────────────────────────────
         ctk.CTkLabel(
@@ -707,7 +781,7 @@ class HistoryWindow:
                     self._current_hotkey = new_key
                     status_label.configure(text=theme.track("Applied"), text_color=theme.STATUS_OK)
                 else:
-                    status_label.configure(text="✗ Invalid key", text_color=CLR_RECORDING)
+                    status_label.configure(text="Invalid key", text_color=CLR_RECORDING)
             else:
                 status_label.configure(text="Restart to apply", text_color=CLR_SUBTEXT)
 
@@ -837,7 +911,7 @@ class HistoryWindow:
                 api_key_entry.configure(placeholder_text="sk-ant-... (saved)")
                 api_key_status.configure(text=theme.track("Saved"), text_color=theme.STATUS_OK)
             except Exception as e:
-                api_key_status.configure(text=f"✗ {e}", text_color=CLR_RECORDING)
+                api_key_status.configure(text=f"{e}", text_color=CLR_RECORDING)
             api_key_status.pack(side="left")
 
         ctk.CTkButton(
@@ -864,6 +938,36 @@ class HistoryWindow:
         )
 
         # ── About section ────────────────────────────────────────────
+        # ── Text section ──────────────────────────────────
+        # The cleaning is silent by design, which is right, and meant nothing in
+        # the app ever said it happens. The wording here matches the README
+        # deliberately: the claim it refuses to make is the important half.
+        ctk.CTkLabel(
+            win, text=theme.track("Text"),
+            text_color=theme.ACCENT,
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
+            anchor="w",
+        ).pack(fill="x", padx=20, pady=(16, 2))
+
+        ctk.CTkLabel(
+            win,
+            text=("Invisible characters are stripped from every dictation before it "
+                  "is pasted, and from the clipboard on Shift + " + HOTKEY + ". "
+                  "Visible punctuation is left alone."),
+            text_color=CLR_SUBTEXT,
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
+            anchor="w", justify="left", wraplength=300,
+        ).pack(fill="x", padx=20, pady=(0, theme.SP_2))
+
+        ctk.CTkLabel(
+            win,
+            text=("This is not watermark removal and proves nothing about "
+                  "authorship."),
+            text_color=CLR_SUBTEXT,
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
+            anchor="w", justify="left", wraplength=300,
+        ).pack(fill="x", padx=20, pady=(0, 0))
+
         ctk.CTkLabel(
             win, text=theme.track("About"),
             text_color=theme.ACCENT,
@@ -894,9 +998,27 @@ class HistoryWindow:
         about.tag_bind("link", "<Leave>",    lambda _: about.configure(cursor="arrow"))
         about.configure(state="disabled")
 
+        self._fit_settings(win)
+
     # ------------------------------------------------------------------
     # Card construction
     # ------------------------------------------------------------------
+
+    def _fit_settings(self, win):
+        """Size the dialog to what it actually contains, capped to the screen.
+
+        A fixed height is a promise about content that keeps changing. This one
+        was 560 and clipped the About paragraph as soon as Shortcuts and Text
+        landed. If the cap ever bites, the honest fix is a scrollable body, not
+        a bigger number.
+        """
+        win.update_idletasks()
+        need = win.winfo_reqheight()
+        cap = int(win.winfo_screenheight() * 0.88)
+        win.geometry("340x%d" % min(need, cap))
+        if need > cap:
+            log.warning("Settings content is %dpx, screen cap is %dpx: it will clip.",
+                        need, cap)
 
     def _add_entry_widget(self, entry: Entry, prepend: bool = True):
         # Hide the empty state the first time a real entry arrives
@@ -960,7 +1082,7 @@ class HistoryWindow:
             ctk.CTkLabel(
                 raw_block, text=theme.track("Raw"),
                 text_color=CLR_RAW_LABEL,
-                font=ctk.CTkFont(size=8, weight="bold"),
+                font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
             ).pack(anchor="w", padx=8, pady=(5, 1))
             self._selectable_text(raw_block, entry.raw, CLR_BG, CLR_RAW_TEXT, size=11)
 
@@ -993,7 +1115,7 @@ class HistoryWindow:
         ctk.CTkLabel(
             ai_frame, text=theme.track("AI"),
             text_color=CLR_AI_LABEL,
-            font=ctk.CTkFont(size=8, weight="bold"),
+            font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL),
         ).pack(anchor="w", padx=8, pady=(5, 1))
         return self._selectable_text(ai_frame, text, CLR_SURFACE1, CLR_AI_TEXT, size=12)
 
@@ -1054,7 +1176,7 @@ class HistoryWindow:
                 refs.ai_frame, text=theme.track("more"),
                 height=18, fg_color="transparent",
                 hover_color=CLR_SURFACE2, text_color=CLR_SUBTEXT,
-                font=ctk.CTkFont(size=9), anchor="w",
+                font=ctk.CTkFont(family=theme.body(), size=theme.SIZE_LABEL), anchor="w",
                 command=_toggle,
             )
             refs.ai_expand_btn.pack(fill="x", padx=8, pady=(0, 5))

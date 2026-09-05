@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.2.1
+
+The interface now says what the app can do.
+
+**Two shipped features were invisible.** Voice commands landed in 1.1.0 and clipboard
+cleaning in 1.2.0, and the interface mentioned neither. Searching the UI source for
+`Ctrl` and `Shift` returned nothing at all. Both were in this README, which is not the
+same as discoverable: nobody reads the README of a tool that is already installed and
+working.
+
+**Every shortcut is listed in two places now.** A **Shortcuts** section at the top of
+Settings, which is permanent, and the history panel before your first dictation, which
+previously spent its whole area on one chord and a microphone glyph. Both are built
+from one list that reads your config, so a feature you switch off is not advertised at
+you. The first-run notification reads the same list.
+
+**The compact bar is deliberately unchanged.** It is 44 pixels tall and its restraint
+is the point. A feature list does not go there.
+
+**A Text section in Settings** explains the invisible-character cleaning, including the
+part the docs are careful about: it is not watermark removal and it proves nothing
+about authorship. A claim that only appears in the documentation is a claim the person
+using the thing never sees.
+
+Six smaller fixes came out of looking properly, all of them things that had been
+shipping for a while:
+
+- The empty state drew a 34px emoji. Emoji take the system font's colour rather than
+  the app's and cannot sit on a grid, which is why the rest of the interface stopped
+  using them a release ago. It is drawn now.
+- The history panel heading was 9px and untracked while the bar's own label was
+  letter-spaced, so the two never matched.
+- Two colours were hardcoded leftovers from a third-party theme this app replaced.
+- Status messages carried a bullet character that got letter-spaced and painted next
+  to the real status dot, so a cold start read `* L O A D I N G . . .` beside a dot.
+- The Settings dialog had a fixed height and quietly cut off its last paragraph as
+  soon as it grew.
+- Three labels sat at 8px and 9px on a four-size type scale.
+
+`tools/check_brand.py` is new and fails the build on the mechanical version of those
+rules: a colour written outside the palette file, a font size off the scale, an emoji
+or an em dash in text a user reads. Every one of the six was mechanically detectable
+and nothing was checking. It found the last three itself.
+
 ## 1.2.0
 
 Text hygiene, in two places.

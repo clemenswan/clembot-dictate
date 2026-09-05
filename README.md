@@ -65,12 +65,12 @@ way a keyboard shortcut does.
 
 ### Option A: Windows installer
 
-Download `Clembot-dictate-Setup-1.2.0.exe` from
+Download `Clembot-dictate-Setup-1.2.1.exe` from
 [the latest release](https://github.com/clemenswan/clembot-dictate/releases/latest).
 77.7 MiB.
 
 ```
-SHA256  3b3ff6c5bf5f578d3131e3f93257134b10081834c807c0752b63ca4ca2ba12bf
+SHA256  d41fbe0bdaab289c42471bef002fee4b1b2c8f1125a1c601706d1be7b7278ff2
 ```
 
 1. Run it. It installs to `%LOCALAPPDATA%\Programs\Clembot-dictate`, no admin rights.
@@ -120,6 +120,10 @@ Full developer setup, including every configuration knob: [docs/setup.md](docs/s
 | Right-click tray → **Clean clipboard** | Same as Shift + backtick, from the menu |
 | Settings → **Hotkey** | Rebind the key. Takes effect immediately, no restart |
 | Settings → **AI Key** | Store an Anthropic key in Windows Credential Manager |
+
+Every shortcut is listed in the app itself, under **Settings** and on the history
+panel before your first dictation, so this table is a convenience rather than the
+only place it exists.
 
 A 44 px strip sits at the top of the screen showing state. It has no title bar: drag it
 by the bar itself, and it stays above your other windows, since a frameless window has no

@@ -47,6 +47,7 @@ ALLOWLIST = (
     "tools/get_model_hash.py",
     "tools/export_public.py",
     "tools/ui_preview.py",
+    "tools/check_brand.py",
 
     # Vendored MIT text engine used by src/normalizer.py. Named explicitly
     # because ALLOWED_DIRS globs src/*.py NON-recursively: without these three

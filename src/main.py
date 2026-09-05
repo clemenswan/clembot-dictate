@@ -19,6 +19,7 @@ from pathlib import Path
 
 import keyboard
 
+import theme
 from logger import get_logger
 from config import (CLIPBOARD_CLEAN_ENABLED, HOTKEY, MIN_RECORD_SECS, NORMALIZE_OUTPUT,
                     REFINE_WITH_AI, REFINE_BACKEND, VOICE_COMMAND_ENABLED)
@@ -76,7 +77,7 @@ def _show_crash_dialog(exc_value: BaseException):
     ctypes.windll.user32.MessageBoxW(
         0,
         f"An unexpected error occurred:\n\n{exc_value}\n\nFull details in:\n{_LOG_PATH}",
-        "Clembot-dictate — Fatal Error",
+        "Clembot-dictate: fatal error",
         0x10,
     )
 
@@ -98,6 +99,19 @@ def _handle_thread_crash(args):
 # ---------------------------------------------------------------------------
 # First-launch detection
 # ---------------------------------------------------------------------------
+
+def _first_run_hint() -> str:
+    """The one balloon a new install gets. It taught one chord out of three.
+
+    Built from the same config flags the Settings list reads, so a disabled
+    feature is never advertised here either.
+    """
+    parts = [f"Hold [{HOTKEY}] anywhere to dictate."]
+    if CLIPBOARD_CLEAN_ENABLED:
+        parts.append(f"Shift+[{HOTKEY}] cleans the clipboard.")
+    parts.append("Settings lists every shortcut.")
+    return " ".join(parts)
+
 
 def _is_first_launch() -> bool:
     return not _FIRST_RUN_FLAG.exists()
@@ -147,7 +161,7 @@ def _load_models():
         # ── Mic permission check ────────────────────────────────────
         if not Recorder.check_mic_access():
             if _ui:
-                _ui.set_status("● No mic", color="#f38ba8")
+                _ui.set_status("No mic", color=theme.RECORDING)
             result = ctypes.windll.user32.MessageBoxW(
                 0,
                 (
@@ -155,7 +169,7 @@ def _load_models():
                     "Click Yes to open Windows microphone settings.\n"
                     "After granting access, restart Clembot-dictate."
                 ),
-                "Clembot-dictate — Microphone Required",
+                "Clembot-dictate: microphone required",
                 0x24,  # MB_YESNO | MB_ICONWARNING
             )
             if result == 6:  # IDYES
@@ -165,7 +179,7 @@ def _load_models():
 
         # ── Model download / load ───────────────────────────────────
         cached = Transcriber.is_cached()
-        status_text = "● Loading..." if cached else "● Downloading..."
+        status_text = "Loading" if cached else "Downloading"
         log.info("%s Whisper model...", "Loading" if cached else "Downloading")
         if _ui:
             _ui.set_status(status_text)
@@ -177,25 +191,25 @@ def _load_models():
 
         log.info("Model ready. Hold [%s] to dictate.", HOTKEY)
         if _ui:
-            _ui.set_status(None)  # Restore "● Ready"
+            _ui.set_status(None)  # back to Ready
 
         # Warn if AI was requested but failed to initialize
         if REFINE_WITH_AI and not _refiner.is_enabled:
             msg = (
-                "AI unavailable — Ollama not running. Run: ollama serve"
+                "AI unavailable. Ollama is not running. Run: ollama serve"
                 if REFINE_BACKEND == "ollama"
-                else "AI unavailable — check your API key in Settings → AI Key"
+                else "AI unavailable. Check your API key in Settings, under AI Key"
             )
             log.warning(msg)
             if _ui:
-                _ui.set_status("⚠ AI offline", color="#f9e2af")
+                _ui.set_status("AI offline", color=theme.STATUS_WARN)
                 threading.Timer(6.0, lambda: _ui.set_status(None)).start()
             if _tray:
                 _tray.notify(msg)
 
         # ── First-launch balloon ────────────────────────────────────
         if _is_first_launch() and _tray:
-            _tray.notify(f"Hold [{HOTKEY}] anywhere to dictate. Right-click this icon for options.")
+            _tray.notify(_first_run_hint())
             _mark_launched()
 
         # ── Version check ───────────────────────────────────────────
@@ -246,7 +260,7 @@ def _on_press(_event):
         with _lock:
             _is_recording = False
         if _tray:
-            _tray.notify("Microphone unavailable — check your audio device.")
+            _tray.notify("Microphone unavailable. Check your audio device.")
         return
     if _ui:   _ui.set_recording(True)
     if _tray: _tray.set_recording(True)

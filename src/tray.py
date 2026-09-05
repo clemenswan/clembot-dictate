@@ -89,7 +89,7 @@ class TrayIcon:
     def set_recording(self, recording: bool):
         self._recording = recording
         self._icon.icon = _make_icon(recording)
-        self._icon.title = "Clembot-dictate — Recording..." if recording else "Clembot-dictate"
+        self._icon.title = "Clembot-dictate: recording" if recording else "Clembot-dictate"
 
     def notify(self, message: str, title: str = "Clembot-dictate") -> None:
         try:

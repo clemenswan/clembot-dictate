@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 # Clembot-dictate — Configuration
 # Edit these values to customize behavior. Restart required for changes to take effect.

@@ -130,3 +130,40 @@ class Grip(Icon):
         for y in (s * 0.38, s * 0.62):
             self.create_line(s * 0.25, y, s * 0.75, y, fill=self._color, width=1.2,
                              capstyle="round")
+
+
+class Mic(Icon):
+    """A microphone, for the empty state.
+
+    The empty state used a 34px emoji, which broke two rules at once: emoji as
+    UI furniture is a vault tell, and 34 is not on the type scale. Drawn here it
+    takes the surface colour like every other icon.
+
+    The capsule is an ellipse rather than two lines closed by two arcs. The
+    first attempt did it the hard way and put the straight sides at
+    top + bw = 10.1 down to bot - bw = 8.4: a negative length, so the body
+    vanished and it rendered as a ring above a smile. An ellipse cannot be
+    inside out.
+    """
+
+    def __init__(self, master, bg: str, color: str, size: int = 28):
+        super().__init__(master, size, bg, color)
+
+    def draw(self):
+        self.delete("all")
+        s = self._size
+        w = max(1.4, s * 0.055)
+        cx = s / 2
+
+        # Capsule.
+        half_w, top, bot = s * 0.17, s * 0.08, s * 0.55
+        self.create_oval(cx - half_w, top, cx + half_w, bot,
+                         outline=self._color, width=w)
+
+        # Cradle, then the stem down to the base.
+        cw = s * 0.30
+        self.create_arc(cx - cw, bot - cw * 1.15, cx + cw, bot + cw * 0.85,
+                        start=200, extent=140, style="arc",
+                        outline=self._color, width=w)
+        self.create_line(cx, bot + cw * 0.55, cx, s * 0.92,
+                         fill=self._color, width=w, capstyle="round")
